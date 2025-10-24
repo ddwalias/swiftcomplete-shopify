@@ -2,7 +2,7 @@
 import '@shopify/ui-extensions/preact';
 
 import { render } from 'preact';
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useApplyShippingAddressChange } from '@shopify/ui-extensions/checkout/preact';
 import type {
   CountryCode,
@@ -60,6 +60,9 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
 }
 
 const MIN_QUERY_LENGTH = 3;
+const MAX_RESULTS = 5;
+const DEBOUNCE_MS = 250;
+
 const LOOKUP_ENDPOINT = 'https://api.swiftcomplete.com/v1/swiftlookup/';
 const SELECT_ENDPOINT =
   'https://ecommerce.swiftcomplete.what3words.com/api/select_address';
@@ -69,7 +72,7 @@ type BannerState = { tone: BannerTone; message: string } | null;
 
 const LOOKUP_PARAMS = new URLSearchParams({
   countries: 'GB',
-  maxResults: '5',
+  maxResults: String(MAX_RESULTS),
   origin: 'swiftcomplete-store.myshopify.com',
   key: '1564a0e7-5eea-4aaf-8a31-39ed0c62698d',
   searchFor: 'what3words,address',
@@ -107,6 +110,11 @@ function AddressLookupExtension() {
   const [activeSuggestionKey, setActiveSuggestionKey] = useState<string | null>(
     null,
   );
+  const [panelOpen, setPanelOpen] = useState(false);
+
+  const debounceRef = useRef<number | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
   const showBanner = useCallback(
     (tone: BannerTone, message: string) => {
       setStatusBanner({ tone, message });
@@ -120,53 +128,48 @@ function AddressLookupExtension() {
 
     if (trimmedValue.length < MIN_QUERY_LENGTH) {
       setSuggestions([]);
+      setPanelOpen(false);
       setIsSearching(false);
       return;
     }
 
-    const abortController = new AbortController();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
     setIsSearching(true);
     clearBanner();
 
-    void (async () => {
+    debounceRef.current = window.setTimeout(async () => {
+      abortRef.current?.abort();
+      abortRef.current = new AbortController();
+
       try {
-        const response = await fetch(buildLookupUrl(trimmedValue), {
-          signal: abortController.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Lookup failed with status ${response.status}`);
-        }
-
-        const data = (await response.json()) as Location[];
-        const nextSuggestions = Array.isArray(data) ? data : [];
-        setSuggestions(nextSuggestions);
-      } catch (error: unknown) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error('Error fetching suggestions:', error);
+        const res = await fetch(buildLookupUrl(trimmedValue), { signal: abortRef.current.signal });
+        if (!res.ok) throw new Error(`Lookup failed ${res.status}`);
+        const data = (await res.json()) as Location[];
+        const next = Array.isArray(data) ? data.slice(0, MAX_RESULTS) : [];
+        setSuggestions(next);
+        setPanelOpen(next.length > 0);
+      } catch (err) {
+        if (abortRef.current?.signal.aborted) return;
+        console.error('Lookup error', err);
         setSuggestions([]);
-        showBanner(
-          'critical',
-          'We couldn’t fetch address suggestions. Try again shortly.',
-        );
+        setPanelOpen(false);
+        showBanner('critical', 'We couldn’t fetch address suggestions. Try again shortly.');
       } finally {
-        if (!abortController.signal.aborted) {
-          setIsSearching(false);
-        }
+        setIsSearching(false);
       }
-    })();
-    return () => abortController.abort();
+    }, DEBOUNCE_MS);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      abortRef.current?.abort();
+    };
+
+
   }, [inputValue, clearBanner, showBanner]);
 
   const handleSelectSuggestion = useCallback(
     async (place: Location) => {
       if (!applyShippingAddressChange) {
-        console.error(
-          'applyShippingAddressChange API is unavailable in this context.',
-        );
         showBanner('critical', 'Address updates are not available right now.');
         return;
       }
@@ -196,8 +199,8 @@ function AddressLookupExtension() {
 
         const data = (await response.json()) as AddressPayload;
 
-        if (!data || !data.address) {
-          throw new Error('Invalid data structure from place-details API');
+        if (!data?.address) {
+          throw new Error('Invalid select payload');
         }
 
         const {
@@ -222,12 +225,6 @@ function AddressLookupExtension() {
         });
 
         if (applyResult.type === 'error') {
-          console.error('Error applying shipping address:');
-          applyResult.errors.forEach(
-            (error: ShippingAddressChangeFieldError) => {
-              console.error(error.message);
-            },
-          );
           showBanner(
             'critical',
             'We couldn’t apply that address. Please choose a different option.',
@@ -236,6 +233,7 @@ function AddressLookupExtension() {
         }
 
         setSuggestions([]);
+        setPanelOpen(false);
         setInputValue('');
         showBanner('success', 'Address applied to the checkout.');
       } catch (error: unknown) {
@@ -257,55 +255,83 @@ function AddressLookupExtension() {
     clearBanner();
   };
 
+  const handleFocus = () => setPanelOpen(suggestions.length > 0);
+  const handleBlur = () => {
+    // small timeout so clicks on items still register
+    setTimeout(() => setPanelOpen(false), 80);
+  };
+
+  const handleClear = useCallback(() => {
+    setInputValue('');
+    setSuggestions([]);
+    setPanelOpen(false);
+    setActiveSuggestionKey(null);
+    clearBanner();
+  }, [clearBanner]);
+
   const trimmedQuery = inputValue.trim();
+  const highlightQuery = trimmedQuery.length > 0 ? trimmedQuery : inputValue;
   const hasSuggestions = suggestions.length > 0;
   const showEmptyState =
     !isSearching && !hasSuggestions && trimmedQuery.length >= MIN_QUERY_LENGTH;
   const renderedSuggestions = useMemo(
     () =>
-      suggestions.map((suggestion) => {
+      suggestions.map((suggestion, index) => {
         const suggestionId = suggestionKey(suggestion);
         const isActive = activeSuggestionKey === suggestionId;
+        const threeWordAddress = suggestion.primary.text.startsWith('///')
+          ? suggestion.primary.text.split(' ')[0]
+          : null;
+        const isLast = index === suggestions.length - 1;
 
         return (
-          <s-box
-            key={suggestionId}
-            padding="small"
-            borderRadius="base"
-            background={isActive ? 'subdued' : 'transparent'}
-          >
-            <s-button
-              variant="secondary"
-              tone="auto"
+          <s-stack key={suggestionId} direction="block" gap="extra-tight">
+            <s-clickable
               onClick={() => {
                 void handleSelectSuggestion(suggestion);
               }}
               accessibilityLabel={`Use address ${suggestion.primary.text}`}
             >
-              <s-stack direction="inline" gap="small" alignItems="center">
-                <s-stack direction="block" gap="small-200">
-                  <HighlightedText
-                    text={suggestion.primary.text}
-                    query={inputValue}
-                  />
-                  <s-text color="subdued">{suggestion.secondary.text}</s-text>
+              <s-box
+                paddingInline="small"
+                paddingBlock="extra-tight"
+                borderRadius="base"
+                background={isActive ? 'subdued' : 'transparent'}
+              >
+                <s-stack direction="block" gap="extra-tight">
+                  <HighlightedText text={suggestion.primary.text} query={highlightQuery} />
+                  <s-stack direction="inline" gap="small-200" alignItems="center">
+                    <s-text size="small" color="subdued">
+                      {suggestion.secondary.text}
+                    </s-text>
+                    {threeWordAddress && (
+                      <s-text size="small" color="subdued">
+                        {threeWordAddress}
+                      </s-text>
+                    )}
+                    {isActive && (
+                      <s-spinner size="small" accessibilityLabel="Applying address" />
+                    )}
+                  </s-stack>
                 </s-stack>
-                {isActive && (
-                  <s-spinner
-                    size="base"
-                    accessibilityLabel="Applying address"
-                  />
-                )}
-              </s-stack>
-            </s-button>
-          </s-box>
+              </s-box>
+            </s-clickable>
+            {!isLast && <s-divider />}
+          </s-stack>
         );
       }),
-    [activeSuggestionKey, handleSelectSuggestion, inputValue, suggestions],
+    [activeSuggestionKey, handleSelectSuggestion, highlightQuery, suggestions],
   );
 
   return (
-    <s-stack direction="block" gap="base">
+    <s-stack direction="block" gap="small">
+      <s-stack direction="block" gap="extra-tight">
+        <s-text type="strong">Swiftcomplete lookup</s-text>
+        <s-text size="small" color="subdued">
+          Find the right address without leaving checkout.
+        </s-text>
+      </s-stack>
+
       {statusBanner && (
         <s-banner
           tone={statusBanner.tone}
@@ -321,46 +347,94 @@ function AddressLookupExtension() {
         </s-banner>
       )}
 
-      <s-box
-        padding="base"
-        borderWidth="base"
-        borderRadius="base"
-        background="base"
-      >
-        <s-stack direction="block" gap="small">
-          <s-text-field
-            label="Type your address or postcode or what3words"
-            value={inputValue}
-            onInput={handleInput}
-            icon="search"
-          />
-
-          {isSearching && (
-            <s-stack direction="inline" gap="small" alignItems="center">
-              <s-spinner
-                size="base"
-                accessibilityLabel="Searching addresses"
-              />
-              <s-text color="subdued">Searching for matches…</s-text>
-            </s-stack>
-          )}
-
-          {hasSuggestions && (
-            <s-stack direction="block" gap="small">
-              <s-text color="subdued">Select an address</s-text>
-              <s-stack direction="block" gap="small">
-                {renderedSuggestions}
-              </s-stack>
-            </s-stack>
-          )}
-
-          {showEmptyState && (
-            <s-text color="subdued">
-              No matches yet. Refine your search or check the spelling.
-            </s-text>
+      <s-stack direction="block" gap="extra-tight">
+        <s-text-field
+          inlineSize="fill"
+          label="Type your address, postcode, or what3words"
+          value={inputValue}
+          onInput={handleInput}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          icon="search"
+        />
+        <s-stack
+          direction="inline"
+          gap="small-200"
+          alignItems="center"
+          justifyContent="space-between"
+        >
+          <s-text size="small" color="subdued">
+            Tip: add a building number, postcode, or ///what3words for faster matches.
+          </s-text>
+          {!!inputValue && (
+            <s-clickable
+              onClick={handleClear}
+              accessibilityLabel="Clear address search"
+            >
+              <s-text size="small" color="subdued">
+                Clear
+              </s-text>
+            </s-clickable>
           )}
         </s-stack>
-      </s-box>
+        {isSearching && !panelOpen && (
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-spinner size="base" accessibilityLabel="Searching addresses" />
+            <s-text size="small" color="subdued">
+              Searching for matches…
+            </s-text>
+          </s-stack>
+        )}
+      </s-stack>
+
+      {panelOpen && (
+        <s-box
+          padding="small"
+          border="base"
+          borderRadius="base"
+          background="base"
+          aria-label="Address suggestions"
+        >
+          <s-stack direction="block" gap="small-200">
+            <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-text type="strong">Suggested matches</s-text>
+              <s-text size="small" color="subdued">
+                {suggestions.length}/{MAX_RESULTS}
+              </s-text>
+              <s-clickable
+                onClick={() => setPanelOpen(false)}
+                accessibilityLabel="Hide suggestions"
+              >
+                <s-text size="small" color="subdued">
+                  Hide
+                </s-text>
+              </s-clickable>
+            </s-stack>
+
+            {isSearching ? (
+              <s-stack direction="inline" gap="small-200" alignItems="center">
+                <s-spinner size="base" accessibilityLabel="Searching addresses" />
+                <s-text size="small" color="subdued">
+                  Looking for nearby matches…
+                </s-text>
+              </s-stack>
+            ) : (
+              <s-stack direction="block" gap="extra-tight">
+                {renderedSuggestions}
+              </s-stack>
+            )}
+          </s-stack>
+        </s-box>
+      )}
+
+      {!panelOpen && showEmptyState && (
+        <s-stack direction="block" gap="extra-tight">
+          <s-text type="strong">No matches yet</s-text>
+          <s-text size="small" color="subdued">
+            Add a street name or confirm the spelling to try again.
+          </s-text>
+        </s-stack>
+      )}
     </s-stack>
   );
 }
