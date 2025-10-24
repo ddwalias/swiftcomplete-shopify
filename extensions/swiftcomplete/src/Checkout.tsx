@@ -34,12 +34,17 @@ function HighlightedText({
   fallbackQuery?: string;
 }) {
   const segments: Array<{ value: string; isHighlight: boolean }> = [];
+  const needsWhat3WordsOffset = text.startsWith('///');
+  const adjustedHighlights =
+    Array.isArray(highlights) && needsWhat3WordsOffset
+      ? highlights.map((value) => value + 3)
+      : highlights;
 
-  if (Array.isArray(highlights) && highlights.length >= 2) {
+  if (Array.isArray(adjustedHighlights) && adjustedHighlights.length >= 2) {
     let cursor = 0;
-    for (let i = 0; i < highlights.length; i += 2) {
-      const rawStart = highlights[i] ?? 0;
-      const rawEnd = highlights[i + 1] ?? rawStart;
+    for (let i = 0; i < adjustedHighlights.length; i += 2) {
+      const rawStart = adjustedHighlights[i] ?? 0;
+      const rawEnd = adjustedHighlights[i + 1] ?? rawStart;
       const start = Math.min(Math.max(rawStart, 0), text.length);
       const endExclusive = Math.min(Math.max(rawEnd + 1, start), text.length);
 
@@ -84,10 +89,13 @@ function HighlightedText({
   return (
     <s-stack direction="inline" gap="none">
       {segments.map((segment, index) => {
-        const displayValue =
-          segment.value.trim().length === 0
-            ? '\u00A0'.repeat(segment.value.length || 1)
-            : segment.value;
+        const value = segment.value;
+        const leadingSpaces = value.match(/^ +/g)?.[0] ?? '';
+        const trailingSpaces = value.match(/ +$/g)?.[0] ?? '';
+        const middle = value.slice(leadingSpaces.length, value.length - trailingSpaces.length);
+        const displayValue = `${leadingSpaces.replace(/ /g, '\u00A0')}${
+          middle.length > 0 ? middle : ''
+        }${trailingSpaces.replace(/ /g, '\u00A0') || ''}` || '\u00A0';
 
         return segment.isHighlight ? (
           <s-text key={`highlight-${index}`} type="strong">
