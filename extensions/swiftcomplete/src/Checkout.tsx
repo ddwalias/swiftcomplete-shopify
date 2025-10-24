@@ -17,6 +17,9 @@ interface HighlightableText {
 }
 
 interface Location {
+  type?: string;
+  isContainer?: boolean;
+  container?: string;
   primary: HighlightableText;
   secondary: HighlightableText;
   countryCode: CountryCode;
@@ -144,9 +147,14 @@ const SELECT_PAYLOAD = {
   populateIndex: 0,
 } as const;
 
-function buildLookupUrl(query: string) {
+function buildLookupUrl(query?: string, container?: string) {
   const params = new URLSearchParams(LOOKUP_PARAMS);
-  params.set('text', query);
+  if (query) {
+    params.set('text', query);
+  }
+  if (container) {
+    params.set('container', container);
+  }
   return `${LOOKUP_ENDPOINT}?${params.toString()}`;
 }
 
@@ -168,6 +176,7 @@ function AddressLookupExtension() {
 
   const debounceRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const skipNextLookupRef = useRef(false);
 
   const showBanner = useCallback(
     (tone: BannerTone, message: string) => {
@@ -178,6 +187,11 @@ function AddressLookupExtension() {
   const clearBanner = useCallback(() => setStatusBanner(null), []);
 
   useEffect(() => {
+    if (skipNextLookupRef.current) {
+      skipNextLookupRef.current = false;
+      return;
+    }
+
     const trimmedValue = inputValue.trim();
 
     if (trimmedValue.length < MIN_QUERY_LENGTH) {
@@ -197,7 +211,9 @@ function AddressLookupExtension() {
       abortRef.current = new AbortController();
 
       try {
-        const res = await fetch(buildLookupUrl(trimmedValue), { signal: abortRef.current.signal });
+        const res = await fetch(buildLookupUrl(trimmedValue), {
+          signal: abortRef.current.signal,
+        });
         if (!res.ok) throw new Error(`Lookup failed ${res.status}`);
         const data = (await res.json()) as Location[];
         const next = Array.isArray(data) ? data.slice(0, MAX_RESULTS) : [];
@@ -225,6 +241,48 @@ function AddressLookupExtension() {
     async (place: Location) => {
       if (!applyShippingAddressChange) {
         showBanner('critical', 'Address updates are not available right now.');
+        return;
+      }
+
+      if (place.isContainer && place.container) {
+        setIsSearching(true);
+
+        try {
+          const res = await fetch(
+            buildLookupUrl(null, place.container),
+          );
+
+          if (!res.ok) {
+            throw new Error(`Container lookup failed ${res.status}`);
+          }
+
+          const data = (await res.json()) as Location[];
+          const next = Array.isArray(data) ? data.slice(0, MAX_RESULTS) : [];
+
+          if (next.length === 0) {
+            showBanner(
+              'critical',
+              'We couldn’t find addresses for that what3words location. Try another suggestion.',
+            );
+          } else {
+            skipNextLookupRef.current = true;
+            setInputValue(place.primary.text);
+            clearBanner();
+          }
+
+          setSuggestions(next);
+          setPanelOpen(next.length > 0);
+        } catch (error) {
+          console.error('What3words expansion failed', error);
+          showBanner(
+            'critical',
+            'We couldn’t expand that what3words location. Please try a different option.',
+          );
+        } finally {
+          setIsSearching(false);
+          setActiveSuggestionKey(null);
+        }
+
         return;
       }
 
