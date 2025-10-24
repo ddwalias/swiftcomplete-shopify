@@ -36,25 +36,79 @@ interface AddressPayload {
   };
 }
 
-function HighlightedText({ text, query }: { text: string; query: string }) {
-  const lowerText = text.toLowerCase();
-  const lowerQuery = query.toLowerCase();
-  const startIndex = lowerText.indexOf(lowerQuery);
+function HighlightedText({
+  text,
+  highlights,
+  fallbackQuery,
+}: {
+  text: string;
+  highlights?: number[];
+  fallbackQuery?: string;
+}) {
+  const segments: Array<{ value: string; isHighlight: boolean }> = [];
 
-  if (startIndex === -1) {
-    return <s-text>{text}</s-text>;
+  if (Array.isArray(highlights) && highlights.length >= 2) {
+    let cursor = 0;
+    for (let i = 0; i < highlights.length; i += 2) {
+      const rawStart = highlights[i] ?? 0;
+      const rawEnd = highlights[i + 1] ?? rawStart;
+      const start = Math.min(Math.max(rawStart, 0), text.length);
+      const endExclusive = Math.min(Math.max(rawEnd + 1, start), text.length);
+
+      if (start > cursor) {
+        segments.push({ value: text.slice(cursor, start), isHighlight: false });
+      }
+      if (endExclusive > start) {
+        segments.push({
+          value: text.slice(start, endExclusive),
+          isHighlight: true,
+        });
+      }
+      cursor = endExclusive;
+    }
+    if (cursor < text.length) {
+      segments.push({ value: text.slice(cursor), isHighlight: false });
+    }
+  } else if (fallbackQuery) {
+    const normalizedQuery = fallbackQuery.trim();
+    if (normalizedQuery.length > 0) {
+      const lowerText = text.toLowerCase();
+      const lowerQuery = normalizedQuery.toLowerCase();
+      const startIndex = lowerText.indexOf(lowerQuery);
+
+      if (startIndex !== -1) {
+        const endIndex = startIndex + normalizedQuery.length;
+        if (startIndex > 0) {
+          segments.push({ value: text.substring(0, startIndex), isHighlight: false });
+        }
+        segments.push({ value: text.substring(startIndex, endIndex), isHighlight: true });
+        if (endIndex < text.length) {
+          segments.push({ value: text.substring(endIndex), isHighlight: false });
+        }
+      }
+    }
   }
 
-  const endIndex = startIndex + query.length;
-  const before = text.substring(0, startIndex);
-  const highlighted = text.substring(startIndex, endIndex);
-  const after = text.substring(endIndex);
+  if (segments.length === 0) {
+    segments.push({ value: text, isHighlight: false });
+  }
 
   return (
     <s-stack direction="inline" gap="none">
-      {before && <s-text>{before}</s-text>}
-      <s-text type="strong">{highlighted}</s-text>
-      {after && <s-text>{after}</s-text>}
+      {segments.map((segment, index) => {
+        const displayValue =
+          segment.value.trim().length === 0
+            ? '\u00A0'.repeat(segment.value.length || 1)
+            : segment.value;
+
+        return segment.isHighlight ? (
+          <s-text key={`highlight-${index}`} type="strong">
+            {displayValue}
+          </s-text>
+        ) : (
+          <s-text key={`text-${index}`}>{displayValue}</s-text>
+        );
+      })}
     </s-stack>
   );
 }
@@ -257,8 +311,7 @@ function AddressLookupExtension() {
 
   const handleFocus = () => setPanelOpen(suggestions.length > 0);
   const handleBlur = () => {
-    // small timeout so clicks on items still register
-    setTimeout(() => setPanelOpen(false), 80);
+    /* keep suggestions visible until explicitly hidden */
   };
 
   const handleClear = useCallback(() => {
@@ -299,7 +352,11 @@ function AddressLookupExtension() {
                 background={isActive ? 'subdued' : 'transparent'}
               >
                 <s-stack direction="block" gap="extra-tight">
-                  <HighlightedText text={suggestion.primary.text} query={highlightQuery} />
+                  <HighlightedText
+                    text={suggestion.primary.text}
+                    highlights={suggestion.primary.highlights}
+                    fallbackQuery={highlightQuery}
+                  />
                   <s-stack direction="inline" gap="small-200" alignItems="center">
                     <s-text size="small" color="subdued">
                       {suggestion.secondary.text}
