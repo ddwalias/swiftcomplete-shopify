@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { useApplyShippingAddressChange } from '@shopify/ui-extensions/checkout/preact';
 import type {
   CountryCode,
-  ShippingAddressChangeFieldError,
 } from '@shopify/ui-extensions/checkout';
 
 type TextFieldElement = HTMLElement & { value?: string };
@@ -23,20 +22,6 @@ interface Location {
   primary: HighlightableText;
   secondary: HighlightableText;
   countryCode: CountryCode;
-}
-
-/**
- * Represents a physical address.
- */
-interface AddressPayload {
-  address?: {
-    address1: string;
-    address2: string;
-    company: string;
-    city: string;
-    zip: string;
-    countryCode: CountryCode;
-  };
 }
 
 function HighlightedText({
@@ -121,8 +106,6 @@ const MAX_RESULTS = 5;
 const DEBOUNCE_MS = 250;
 
 const LOOKUP_ENDPOINT = 'https://api.swiftcomplete.com/v1/swiftlookup/';
-const SELECT_ENDPOINT =
-  'https://ecommerce.swiftcomplete.what3words.com/api/select_address';
 
 type BannerTone = 'success' | 'critical';
 type BannerState = { tone: BannerTone; message: string } | null;
@@ -134,18 +117,6 @@ const LOOKUP_PARAMS = new URLSearchParams({
   key: '1564a0e7-5eea-4aaf-8a31-39ed0c62698d',
   searchFor: 'what3words,address',
 });
-
-const SELECT_PAYLOAD = {
-  maxResults: 5,
-  lineFormat1: 'AddressLine1',
-  lineFormat2: 'SubBuilding',
-  lineFormat3: 'TertiaryLocality, SecondaryLocality, PrimaryLocality',
-  lineFormat4: 'PrimaryLocality',
-  lineFormat5: 'POSTCODE',
-  lineFormat6: 'PrimaryCountry',
-  lineFormat7: 'what3words',
-  populateIndex: 0,
-} as const;
 
 function buildLookupUrl(query?: string, container?: string) {
   const params = new URLSearchParams(LOOKUP_PARAMS);
@@ -176,7 +147,7 @@ function AddressLookupExtension() {
 
   const debounceRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const skipNextLookupRef = useRef(false);
+  const lastQueryRef = useRef('');
 
   const showBanner = useCallback(
     (tone: BannerTone, message: string) => {
@@ -187,11 +158,6 @@ function AddressLookupExtension() {
   const clearBanner = useCallback(() => setStatusBanner(null), []);
 
   useEffect(() => {
-    if (skipNextLookupRef.current) {
-      skipNextLookupRef.current = false;
-      return;
-    }
-
     const trimmedValue = inputValue.trim();
 
     if (trimmedValue.length < MIN_QUERY_LENGTH) {
@@ -205,6 +171,7 @@ function AddressLookupExtension() {
 
     setIsSearching(true);
     clearBanner();
+    lastQueryRef.current = trimmedValue;
 
     debounceRef.current = window.setTimeout(async () => {
       abortRef.current?.abort();
@@ -244,12 +211,15 @@ function AddressLookupExtension() {
         return;
       }
 
+      const selectionKey = suggestionKey(place);
+      setActiveSuggestionKey(selectionKey);
+
       if (place.isContainer && place.container) {
         setIsSearching(true);
 
         try {
           const res = await fetch(
-            buildLookupUrl(null, place.container),
+            buildLookupUrl(undefined, place.container),
           );
 
           if (!res.ok) {
@@ -262,21 +232,17 @@ function AddressLookupExtension() {
           if (next.length === 0) {
             showBanner(
               'critical',
-              'We couldn’t find addresses for that what3words location. Try another suggestion.',
+              'We couldn’t find addresses for that location. Try another suggestion.',
             );
           } else {
-            skipNextLookupRef.current = true;
-            setInputValue(place.primary.text);
-            clearBanner();
+            setSuggestions(next);
+            setPanelOpen(true);
           }
-
-          setSuggestions(next);
-          setPanelOpen(next.length > 0);
         } catch (error) {
-          console.error('What3words expansion failed', error);
+          console.error('Container expansion failed', error);
           showBanner(
             'critical',
-            'We couldn’t expand that what3words location. Please try a different option.',
+            'We couldn’t expand that result. Please try a different option.',
           );
         } finally {
           setIsSearching(false);
@@ -286,70 +252,39 @@ function AddressLookupExtension() {
         return;
       }
 
-      const selectionKey = suggestionKey(place);
-      setActiveSuggestionKey(selectionKey);
-      clearBanner();
+      var apt = '';
+      var address = place.primary?.text ?? '';
+
+      if (place.type === 'address.residential.subbuilding.name') {
+        [apt, address] = (place.primary?.text ?? '')
+          .split(',')
+          .map((part) => part.trim())
+          .filter(Boolean);
+      }
+
+      const [city = '', zip = ''] = (place.secondary?.text ?? '')
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
 
       try {
-        const response = await fetch(SELECT_ENDPOINT, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            ...SELECT_PAYLOAD,
-            text: place.primary.text,
-            countries: place.countryCode,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(
-            `Select address failed with status ${response.status}`,
-          );
-        }
-
-        const data = (await response.json()) as AddressPayload;
-
-        if (!data?.address) {
-          throw new Error('Invalid select payload');
-        }
-
-        const {
-          address1,
-          address2,
-          company,
-          city,
-          zip,
-          countryCode,
-        } = data.address;
-
-        const applyResult = await applyShippingAddressChange({
+        await applyShippingAddressChange({
           type: 'updateShippingAddress',
           address: {
-            address1,
-            address2,
-            company,
+            address1: address,
+            address2: apt,
             city,
             zip,
-            countryCode,
+            countryCode: place.countryCode,
           },
         });
-
-        if (applyResult.type === 'error') {
-          showBanner(
-            'critical',
-            'We couldn’t apply that address. Please choose a different option.',
-          );
-          return;
-        }
 
         setSuggestions([]);
         setPanelOpen(false);
         setInputValue('');
         showBanner('success', 'Address applied to the checkout.');
       } catch (error: unknown) {
-        console.error('Error fetching or processing place details:', error);
+        console.error('Error applying suggestion to checkout:', error);
         showBanner(
           'critical',
           'Something went wrong while applying the address. Please try again.',
@@ -368,9 +303,6 @@ function AddressLookupExtension() {
   };
 
   const handleFocus = () => setPanelOpen(suggestions.length > 0);
-  const handleBlur = () => {
-    /* keep suggestions visible until explicitly hidden */
-  };
 
   const handleClear = useCallback(() => {
     setInputValue('');
@@ -469,7 +401,6 @@ function AddressLookupExtension() {
           value={inputValue}
           onInput={handleInput}
           onFocus={handleFocus}
-          onBlur={handleBlur}
           icon="search"
         />
         <s-stack
