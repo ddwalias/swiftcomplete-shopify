@@ -134,6 +134,31 @@ function suggestionKey({ primary, secondary }: Location) {
   return `${primary.text}-${secondary.text}`;
 }
 
+function splitPrimaryTextSegments(
+  text?: string | null,
+): [string | undefined, string | undefined] {
+  if (!text) {
+    return [undefined, undefined];
+  }
+
+  const [firstSegment, ...rest] = text.split(',');
+  const leading = firstSegment?.trim();
+  const remainder = rest
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .join(', ');
+
+  return [leading || undefined, remainder || undefined];
+}
+
+function isSubbuildingLocation(type?: string | null) {
+  return type = 'address.residential.subbuilding.name';
+}
+
+function isBusinessLocation(type?: string | null) {
+  return type = 'address.business';
+}
+
 function AddressLookupExtension() {
   const applyShippingAddressChange = useApplyShippingAddressChange();
 
@@ -253,22 +278,26 @@ function AddressLookupExtension() {
         return;
       }
 
-      var apt = undefined;
-      var address = place.primary?.text ?? undefined;
-      var company = undefined;
-
-      if (place.type === 'address.residential.subbuilding.name') {
-        [apt, address] = (place.primary?.text ?? '')
-          .split(',')
-          .map((part) => part.trim())
-          .filter(Boolean);
+      const primaryText = place.primary?.text;
+      let address1 = primaryText?.trim();
+      if (!address1) {
+        address1 = primaryText;
       }
+      let address2: string | undefined;
+      let company: string | undefined;
 
-      if (place.type === 'address.business') {
-        [company, address] = (place.primary?.text ?? '')
-          .split(',')
-          .map((part) => part.trim())
-          .filter(Boolean);
+      if (isSubbuildingLocation(place.type)) {
+        const [beforeComma, remainder] = splitPrimaryTextSegments(primaryText);
+        address2 = beforeComma ?? address2;
+        if (remainder) {
+          address1 = remainder;
+        }
+      } else if (isBusinessLocation(place.type)) {
+        const [beforeComma, remainder] = splitPrimaryTextSegments(primaryText);
+        company = beforeComma ?? company;
+        if (remainder) {
+          address1 = remainder;
+        }
       }
 
       const [city = '', zip = ''] = (place.secondary?.text ?? '')
@@ -280,8 +309,8 @@ function AddressLookupExtension() {
         await applyShippingAddressChange({
           type: 'updateShippingAddress',
           address: {
-            address1: address,
-            address2: apt,
+            address1,
+            address2,
             company,
             city,
             zip,
