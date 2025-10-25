@@ -34,17 +34,12 @@ function HighlightedText({
   fallbackQuery?: string;
 }) {
   const segments: Array<{ value: string; isHighlight: boolean }> = [];
-  const needsWhat3WordsOffset = text.startsWith('///');
-  const adjustedHighlights =
-    Array.isArray(highlights) && needsWhat3WordsOffset
-      ? highlights.map((value) => value + 3)
-      : highlights;
 
-  if (Array.isArray(adjustedHighlights) && adjustedHighlights.length >= 2) {
+  if (Array.isArray(highlights) && highlights.length >= 2) {
     let cursor = 0;
-    for (let i = 0; i < adjustedHighlights.length; i += 2) {
-      const rawStart = adjustedHighlights[i] ?? 0;
-      const rawEnd = adjustedHighlights[i + 1] ?? rawStart;
+    for (let i = 0; i < highlights.length; i += 2) {
+      const rawStart = highlights[i] ?? 0;
+      const rawEnd = highlights[i + 1] ?? rawStart;
       const start = Math.min(Math.max(rawStart, 0), text.length);
       const endExclusive = Math.min(Math.max(rawEnd + 1, start), text.length);
 
@@ -74,8 +69,7 @@ function HighlightedText({
         if (startIndex > 0) {
           segments.push({ value: text.substring(0, startIndex), isHighlight: false });
         }
-        segments.push({ value: text.substring(startIndex, endIndex), isHighlight: true });
-        if (endIndex < text.length) {
+        segments.push({ value: text.substring(startIndex, endIndex), isHighlight: true }); if (endIndex < text.length) {
           segments.push({ value: text.substring(endIndex), isHighlight: false });
         }
       }
@@ -93,9 +87,8 @@ function HighlightedText({
         const leadingSpaces = value.match(/^ +/g)?.[0] ?? '';
         const trailingSpaces = value.match(/ +$/g)?.[0] ?? '';
         const middle = value.slice(leadingSpaces.length, value.length - trailingSpaces.length);
-        const displayValue = `${leadingSpaces.replace(/ /g, '\u00A0')}${
-          middle.length > 0 ? middle : ''
-        }${trailingSpaces.replace(/ /g, '\u00A0') || ''}` || '\u00A0';
+        const displayValue = `${leadingSpaces.replace(/ /g, '\u00A0')}${middle.length > 0 ? middle : ''
+          }${trailingSpaces.replace(/ /g, '\u00A0') || ''}` || '\u00A0';
 
         return segment.isHighlight ? (
           <s-text key={`highlight-${index}`} type="strong">
@@ -260,11 +253,19 @@ function AddressLookupExtension() {
         return;
       }
 
-      var apt = '';
-      var address = place.primary?.text ?? '';
+      var apt = undefined;
+      var address = place.primary?.text ?? undefined;
+      var company = undefined;
 
       if (place.type === 'address.residential.subbuilding.name') {
         [apt, address] = (place.primary?.text ?? '')
+          .split(',')
+          .map((part) => part.trim())
+          .filter(Boolean);
+      }
+
+      if (place.type === 'address.business') {
+        [company, address] = (place.primary?.text ?? '')
           .split(',')
           .map((part) => part.trim())
           .filter(Boolean);
@@ -281,6 +282,7 @@ function AddressLookupExtension() {
           address: {
             address1: address,
             address2: apt,
+            company,
             city,
             zip,
             countryCode: place.countryCode,
@@ -325,18 +327,16 @@ function AddressLookupExtension() {
   const hasSuggestions = suggestions.length > 0;
   const showEmptyState =
     !isSearching && !hasSuggestions && trimmedQuery.length >= MIN_QUERY_LENGTH;
+  const showClearAccessory = inputValue.length > 0;
   const renderedSuggestions = useMemo(
     () =>
       suggestions.map((suggestion, index) => {
         const suggestionId = suggestionKey(suggestion);
         const isActive = activeSuggestionKey === suggestionId;
-        const threeWordAddress = suggestion.primary.text.startsWith('///')
-          ? suggestion.primary.text.split(' ')[0]
-          : null;
         const isLast = index === suggestions.length - 1;
 
         return (
-          <s-stack key={suggestionId} direction="block" gap="extra-tight">
+          <s-stack key={suggestionId} direction="block" gap="small-100">
             <s-clickable
               onClick={() => {
                 void handleSelectSuggestion(suggestion);
@@ -344,26 +344,21 @@ function AddressLookupExtension() {
               accessibilityLabel={`Use address ${suggestion.primary.text}`}
             >
               <s-box
-                paddingInline="small"
-                paddingBlock="extra-tight"
+                paddingInline="small-100"
+                paddingBlock="none"
                 borderRadius="base"
                 background={isActive ? 'subdued' : 'transparent'}
               >
-                <s-stack direction="block" gap="extra-tight">
+                <s-stack direction="block" gap="none">
                   <HighlightedText
                     text={suggestion.primary.text}
                     highlights={suggestion.primary.highlights}
                     fallbackQuery={highlightQuery}
                   />
-                  <s-stack direction="inline" gap="small-200" alignItems="center">
-                    <s-text size="small" color="subdued">
+                  <s-stack direction="inline" gap="small-100" alignItems="center">
+                    <s-text color="subdued">
                       {suggestion.secondary.text}
                     </s-text>
-                    {threeWordAddress && (
-                      <s-text size="small" color="subdued">
-                        {threeWordAddress}
-                      </s-text>
-                    )}
                     {isActive && (
                       <s-spinner size="small" accessibilityLabel="Applying address" />
                     )}
@@ -380,11 +375,8 @@ function AddressLookupExtension() {
 
   return (
     <s-stack direction="block" gap="small">
-      <s-stack direction="block" gap="extra-tight">
+      <s-stack direction="block" gap="small-200">
         <s-text type="strong">Swiftcomplete lookup</s-text>
-        <s-text size="small" color="subdued">
-          Find the right address without leaving checkout.
-        </s-text>
       </s-stack>
 
       {statusBanner && (
@@ -402,39 +394,28 @@ function AddressLookupExtension() {
         </s-banner>
       )}
 
-      <s-stack direction="block" gap="extra-tight">
+      <s-stack direction="block" gap="small-200">
         <s-text-field
-          inlineSize="fill"
           label="Type your address, postcode, or what3words"
           value={inputValue}
           onInput={handleInput}
           onFocus={handleFocus}
           icon="search"
-        />
-        <s-stack
-          direction="inline"
-          gap="small-200"
-          alignItems="center"
-          justifyContent="space-between"
         >
-          <s-text size="small" color="subdued">
-            Tip: add a building number, postcode, or ///what3words for faster matches.
-          </s-text>
-          {!!inputValue && (
+          {showClearAccessory && (
             <s-clickable
+              slot="accessory"
               onClick={handleClear}
               accessibilityLabel="Clear address search"
             >
-              <s-text size="small" color="subdued">
-                Clear
-              </s-text>
+              <s-icon type="x" size="small" aria-hidden="true" />
             </s-clickable>
           )}
-        </s-stack>
+        </s-text-field>
         {isSearching && !panelOpen && (
           <s-stack direction="inline" gap="small-200" alignItems="center">
             <s-spinner size="base" accessibilityLabel="Searching addresses" />
-            <s-text size="small" color="subdued">
+            <s-text color="subdued">
               Searching for matches…
             </s-text>
           </s-stack>
@@ -452,14 +433,14 @@ function AddressLookupExtension() {
           <s-stack direction="block" gap="small-200">
             <s-stack direction="inline" gap="small-200" alignItems="center">
               <s-text type="strong">Suggested matches</s-text>
-              <s-text size="small" color="subdued">
-                {suggestions.length}/{MAX_RESULTS}
+              <s-text color="subdued">
+                Found {suggestions.length} result{suggestions.length !== 1 ? 's' : ''}
               </s-text>
               <s-clickable
                 onClick={() => setPanelOpen(false)}
                 accessibilityLabel="Hide suggestions"
               >
-                <s-text size="small" color="subdued">
+                <s-text color="subdued">
                   Hide
                 </s-text>
               </s-clickable>
@@ -468,12 +449,12 @@ function AddressLookupExtension() {
             {isSearching ? (
               <s-stack direction="inline" gap="small-200" alignItems="center">
                 <s-spinner size="base" accessibilityLabel="Searching addresses" />
-                <s-text size="small" color="subdued">
+                <s-text color="subdued">
                   Looking for nearby matches…
                 </s-text>
               </s-stack>
             ) : (
-              <s-stack direction="block" gap="extra-tight">
+              <s-stack direction="block" gap="small-200">
                 {renderedSuggestions}
               </s-stack>
             )}
@@ -482,9 +463,9 @@ function AddressLookupExtension() {
       )}
 
       {!panelOpen && showEmptyState && (
-        <s-stack direction="block" gap="extra-tight">
+        <s-stack direction="block" gap="small-200">
           <s-text type="strong">No matches yet</s-text>
-          <s-text size="small" color="subdued">
+          <s-text color="subdued">
             Add a street name or confirm the spelling to try again.
           </s-text>
         </s-stack>
