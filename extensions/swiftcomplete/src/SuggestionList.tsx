@@ -53,7 +53,14 @@ export default function SuggestionList({
                     <s-text color="subdued">
                       {suggestion.secondary.text}
                     </s-text>
-                    <s-stack direction="inline" alignItems="center">
+                    <s-stack direction="inline" alignItems="center" gap="small-200">
+                      {isSelected && !isActive && (
+                        <s-icon
+                          type="check"
+                          size="small-200"
+                          aria-hidden="true"
+                        />
+                      )}
                       {suggestion.isContainer && (
                         <s-stack direction="inline" gap="small-200" alignItems="center">
                           <s-text color="subdued">
