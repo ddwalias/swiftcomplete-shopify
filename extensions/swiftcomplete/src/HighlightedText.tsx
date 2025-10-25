@@ -1,3 +1,19 @@
+const HTML_ESCAPE_LOOKUP: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+const HTML_ESCAPE_REGEX = /[&<>"']/g;
+
+function escapeHtml(value: string) {
+  return value.replace(HTML_ESCAPE_REGEX, (char) => HTML_ESCAPE_LOOKUP[char]);
+}
+
+const NBSP_ENTITY = '&nbsp;';
+
 export default function HighlightedText({
   text,
   highlights,
@@ -57,22 +73,26 @@ export default function HighlightedText({
   return (
     <s-stack direction="inline" gap="none">
       {segments.map((segment, index) => {
-        const value = segment.value;
-        const leadingSpaces = value.match(/^ +/g)?.[0] ?? '';
-        const trailingSpaces = value.match(/ +$/g)?.[0] ?? '';
-        const middle = value.slice(leadingSpaces.length, value.length - trailingSpaces.length);
-        const displayValue = `${leadingSpaces.replace(/ /g, '\u00A0')}${middle.length > 0 ? middle : ''
-          }${trailingSpaces.replace(/ /g, '\u00A0') || ''}` || '\u00A0';
+        const safeHtmlValue =
+          escapeHtml(segment.value).replace(/ /g, NBSP_ENTITY) || NBSP_ENTITY;
 
-        return segment.isHighlight ? (
-          <s-text key={`highlight-${index}`} type="strong">
-            {displayValue}
-          </s-text>
-        ) : (
-          <s-text key={`text-${index}`}>{displayValue}</s-text>
+        if (segment.isHighlight) {
+          return (
+            <s-text
+              key={`highlight-${index}`}
+              type="strong"
+              dangerouslySetInnerHTML={{ __html: safeHtmlValue }}
+            />
+          );
+        }
+
+        return (
+          <s-text
+            key={`text-${index}`}
+            dangerouslySetInnerHTML={{ __html: safeHtmlValue }}
+          />
         );
       })}
     </s-stack>
   );
 }
-
