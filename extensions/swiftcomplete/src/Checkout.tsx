@@ -1,4 +1,3 @@
-/** @jsxImportSource preact */
 import '@shopify/ui-extensions/preact';
 
 import { render } from 'preact';
@@ -208,9 +207,6 @@ function AddressLookupExtension() {
           },
         });
 
-        setSuggestions([]);
-        setPanelOpen(false);
-        setInputValue('');
         showBanner('success', 'Address applied to the checkout.');
       } catch (error: unknown) {
         console.error('Error applying suggestion to checkout:', error);
