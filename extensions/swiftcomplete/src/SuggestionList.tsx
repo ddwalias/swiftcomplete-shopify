@@ -8,10 +8,12 @@ function suggestionKey({ primary, secondary }: Location) {
 export default function SuggestionList({
   suggestions,
   activeSuggestionKey,
+  selectedSuggestionKey,
   onSelect,
 }: {
   suggestions: Location[];
   activeSuggestionKey: string | null;
+  selectedSuggestionKey: string | null;
   onSelect: (suggestion: Location) => Promise<void> | void;
 }) {
   if (suggestions.length === 0) {
@@ -23,6 +25,7 @@ export default function SuggestionList({
       {suggestions.map((suggestion, index) => {
         const suggestionId = suggestionKey(suggestion);
         const isActive = activeSuggestionKey === suggestionId;
+        const isSelected = selectedSuggestionKey === suggestionId;
         const isLast = index === suggestions.length - 1;
 
         return (
@@ -35,7 +38,7 @@ export default function SuggestionList({
             >
               <s-box
                 padding='small'
-                background={isActive ? 'subdued' : 'transparent'}
+                background={isSelected ? 'subdued' : 'transparent'}
               >
                 <s-stack direction="block">
                   <HighlightedText

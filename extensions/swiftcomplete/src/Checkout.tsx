@@ -61,6 +61,9 @@ function AddressLookupExtension() {
   const [activeSuggestionKey, setActiveSuggestionKey] = useState<string | null>(
     null,
   );
+  const [selectedSuggestionKey, setSelectedSuggestionKey] = useState<string | null>(
+    null,
+  );
   const [panelOpen, setPanelOpen] = useState(false);
 
   const debounceRef = useRef<number | null>(null);
@@ -82,6 +85,8 @@ function AddressLookupExtension() {
       setSuggestions([]);
       setPanelOpen(false);
       setIsSearching(false);
+      setActiveSuggestionKey(null);
+      setSelectedSuggestionKey(null);
       return;
     }
 
@@ -128,6 +133,7 @@ function AddressLookupExtension() {
 
       const selectionKey = suggestionKey(place);
       setActiveSuggestionKey(selectionKey);
+      setSelectedSuggestionKey(selectionKey);
 
       if (place.isContainer && place.container) {
         setIsSearching(true);
@@ -161,6 +167,7 @@ function AddressLookupExtension() {
         } finally {
           setIsSearching(false);
           setActiveSuggestionKey(null);
+          setSelectedSuggestionKey(null);
         }
 
         return;
@@ -223,6 +230,8 @@ function AddressLookupExtension() {
   const handleInput = (event: Event) => {
     const { value } = event.currentTarget as HTMLInputElement;
     setInputValue(value ?? '');
+    setActiveSuggestionKey(null);
+    setSelectedSuggestionKey(null);
     clearBanner();
   };
 
@@ -233,6 +242,7 @@ function AddressLookupExtension() {
     setSuggestions([]);
     setPanelOpen(false);
     setActiveSuggestionKey(null);
+    setSelectedSuggestionKey(null);
     clearBanner();
   }, [clearBanner]);
 
@@ -332,6 +342,7 @@ function AddressLookupExtension() {
                   <SuggestionList
                     suggestions={suggestions}
                     activeSuggestionKey={activeSuggestionKey}
+                    selectedSuggestionKey={selectedSuggestionKey}
                     onSelect={handleSelectSuggestion}
                   />
                 );
