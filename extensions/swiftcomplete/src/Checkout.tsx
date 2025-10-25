@@ -44,11 +44,11 @@ function splitPrimaryTextSegments(
 }
 
 function isSubbuildingLocation(type?: string | null) {
-  return type = 'address.residential.subbuilding.name';
+  return type === 'address.residential.subbuilding.name';
 }
 
 function isBusinessLocation(type?: string | null) {
-  return type = 'address.business';
+  return type === 'address.business';
 }
 
 function AddressLookupExtension() {
