@@ -2,122 +2,14 @@
 import '@shopify/ui-extensions/preact';
 
 import { render } from 'preact';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { useApplyShippingAddressChange } from '@shopify/ui-extensions/checkout/preact';
-import type {
-  CountryCode,
-} from '@shopify/ui-extensions/checkout';
-
-type TextFieldElement = HTMLElement & { value?: string };
-
-interface HighlightableText {
-  text: string;
-  highlights: number[];
-}
-
-interface Location {
-  type?: string;
-  isContainer?: boolean;
-  container?: string;
-  primary: HighlightableText;
-  secondary: HighlightableText;
-  countryCode: CountryCode;
-}
-
-function HighlightedText({
-  text,
-  highlights,
-  fallbackQuery,
-}: {
-  text: string;
-  highlights?: number[];
-  fallbackQuery?: string;
-}) {
-  const segments: Array<{ value: string; isHighlight: boolean }> = [];
-
-  if (Array.isArray(highlights) && highlights.length >= 2) {
-    let cursor = 0;
-    for (let i = 0; i < highlights.length; i += 2) {
-      const rawStart = highlights[i] ?? 0;
-      const rawEnd = highlights[i + 1] ?? rawStart;
-      const start = Math.min(Math.max(rawStart, 0), text.length);
-      const endExclusive = Math.min(Math.max(rawEnd + 1, start), text.length);
-
-      if (start > cursor) {
-        segments.push({ value: text.slice(cursor, start), isHighlight: false });
-      }
-      if (endExclusive > start) {
-        segments.push({
-          value: text.slice(start, endExclusive),
-          isHighlight: true,
-        });
-      }
-      cursor = endExclusive;
-    }
-    if (cursor < text.length) {
-      segments.push({ value: text.slice(cursor), isHighlight: false });
-    }
-  } else if (fallbackQuery) {
-    const normalizedQuery = fallbackQuery.trim();
-    if (normalizedQuery.length > 0) {
-      const lowerText = text.toLowerCase();
-      const lowerQuery = normalizedQuery.toLowerCase();
-      const startIndex = lowerText.indexOf(lowerQuery);
-
-      if (startIndex !== -1) {
-        const endIndex = startIndex + normalizedQuery.length;
-        if (startIndex > 0) {
-          segments.push({ value: text.substring(0, startIndex), isHighlight: false });
-        }
-        segments.push({ value: text.substring(startIndex, endIndex), isHighlight: true }); if (endIndex < text.length) {
-          segments.push({ value: text.substring(endIndex), isHighlight: false });
-        }
-      }
-    }
-  }
-
-  if (segments.length === 0) {
-    segments.push({ value: text, isHighlight: false });
-  }
-
-  return (
-    <s-stack direction="inline" gap="none">
-      {segments.map((segment, index) => {
-        const value = segment.value;
-        const leadingSpaces = value.match(/^ +/g)?.[0] ?? '';
-        const trailingSpaces = value.match(/ +$/g)?.[0] ?? '';
-        const middle = value.slice(leadingSpaces.length, value.length - trailingSpaces.length);
-        const displayValue = `${leadingSpaces.replace(/ /g, '\u00A0')}${middle.length > 0 ? middle : ''
-          }${trailingSpaces.replace(/ /g, '\u00A0') || ''}` || '\u00A0';
-
-        return segment.isHighlight ? (
-          <s-text key={`highlight-${index}`} type="strong">
-            {displayValue}
-          </s-text>
-        ) : (
-          <s-text key={`text-${index}`}>{displayValue}</s-text>
-        );
-      })}
-    </s-stack>
-  );
-}
-
-const MIN_QUERY_LENGTH = 3;
-const MAX_RESULTS = 5;
-const DEBOUNCE_MS = 250;
-
-const LOOKUP_ENDPOINT = 'https://api.swiftcomplete.com/v1/swiftlookup/';
+import { Location } from "./type"
+import { DEBOUNCE_MS, LOOKUP_ENDPOINT, LOOKUP_PARAMS, MAX_RESULTS, MIN_QUERY_LENGTH } from './config';
+import SuggestionList from './SuggestionList';
 
 type BannerTone = 'success' | 'critical';
 type BannerState = { tone: BannerTone; message: string } | null;
-
-const LOOKUP_PARAMS = new URLSearchParams({
-  countries: 'GB',
-  maxResults: String(MAX_RESULTS),
-  origin: 'swiftcomplete-store.myshopify.com',
-  key: '1564a0e7-5eea-4aaf-8a31-39ed0c62698d',
-  searchFor: 'what3words,address',
-});
 
 function buildLookupUrl(query?: string, container?: string) {
   const params = new URLSearchParams(LOOKUP_PARAMS);
@@ -226,8 +118,6 @@ function AddressLookupExtension() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       abortRef.current?.abort();
     };
-
-
   }, [inputValue, clearBanner, showBanner]);
 
   const handleSelectSuggestion = useCallback(
@@ -336,7 +226,7 @@ function AddressLookupExtension() {
   );
 
   const handleInput = (event: Event) => {
-    const { value } = event.currentTarget as TextFieldElement;
+    const { value } = event.currentTarget as HTMLInputElement;
     setInputValue(value ?? '');
     clearBanner();
   };
@@ -357,51 +247,6 @@ function AddressLookupExtension() {
   const showEmptyState =
     !isSearching && !hasSuggestions && trimmedQuery.length >= MIN_QUERY_LENGTH;
   const showClearAccessory = inputValue.length > 0;
-  const renderedSuggestions = useMemo(
-    () =>
-      suggestions.map((suggestion, index) => {
-        const suggestionId = suggestionKey(suggestion);
-        const isActive = activeSuggestionKey === suggestionId;
-        const isLast = index === suggestions.length - 1;
-
-        return (
-          <s-stack key={suggestionId} direction="block" gap="small-100">
-            <s-clickable
-              onClick={() => {
-                void handleSelectSuggestion(suggestion);
-              }}
-              accessibilityLabel={`Use address ${suggestion.primary.text}`}
-            >
-              <s-box
-                paddingInline="small-100"
-                paddingBlock="none"
-                borderRadius="base"
-                background={isActive ? 'subdued' : 'transparent'}
-              >
-                <s-stack direction="block" gap="none">
-                  <HighlightedText
-                    text={suggestion.primary.text}
-                    highlights={suggestion.primary.highlights}
-                    fallbackQuery={highlightQuery}
-                  />
-                  <s-stack direction="inline" gap="small-100" alignItems="center">
-                    <s-text color="subdued">
-                      {suggestion.secondary.text}
-                    </s-text>
-                    {isActive && (
-                      <s-spinner size="small" accessibilityLabel="Applying address" />
-                    )}
-                  </s-stack>
-                </s-stack>
-              </s-box>
-            </s-clickable>
-            {!isLast && <s-divider />}
-          </s-stack>
-        );
-      }),
-    [activeSuggestionKey, handleSelectSuggestion, highlightQuery, suggestions],
-  );
-
   return (
     <s-stack direction="block" gap="small">
       <s-stack direction="block" gap="small-200">
@@ -453,14 +298,13 @@ function AddressLookupExtension() {
 
       {panelOpen && (
         <s-box
-          padding="small"
           border="base"
           borderRadius="base"
           background="base"
           aria-label="Address suggestions"
         >
-          <s-stack direction="block" gap="small-200">
-            <s-stack direction="inline" gap="small-200" alignItems="center">
+          <s-stack direction="block">
+            <s-stack padding='small-200' direction="inline" gap="small-200" alignItems="center">
               <s-text type="strong">Suggested matches</s-text>
               <s-text color="subdued">
                 Found {suggestions.length} result{suggestions.length !== 1 ? 's' : ''}
@@ -476,16 +320,19 @@ function AddressLookupExtension() {
             </s-stack>
 
             {isSearching ? (
-              <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-stack padding='small-200' direction="inline" gap="small-200" alignItems="center">
                 <s-spinner size="base" accessibilityLabel="Searching addresses" />
                 <s-text color="subdued">
                   Looking for nearby matches…
                 </s-text>
               </s-stack>
             ) : (
-              <s-stack direction="block" gap="small-200">
-                {renderedSuggestions}
-              </s-stack>
+              <SuggestionList
+                suggestions={suggestions}
+                highlightQuery={highlightQuery}
+                activeSuggestionKey={activeSuggestionKey}
+                onSelect={handleSelectSuggestion}
+              />
             )}
           </s-stack>
         </s-box>
