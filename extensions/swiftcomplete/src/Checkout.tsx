@@ -299,18 +299,24 @@ function AddressLookupExtension() {
           aria-label="Address suggestions"
         >
           <s-stack direction="block">
-            <s-stack padding='small-200' direction="inline" gap="small-200" alignItems="center">
-              <s-text type="strong">Suggested matches</s-text>
-              <s-text color="subdued">
-                Found {suggestions.length} result{suggestions.length !== 1 ? 's' : ''}
-              </s-text>
+            <s-stack
+              padding='small-200'
+              direction="inline"
+              gap="small-200"
+              alignItems="center"
+              justifyContent="space-between"
+            >
+              <s-stack direction="inline" gap="small-200" alignItems="center">
+                <s-text type="strong">Suggested matches</s-text>
+                <s-text color="subdued">
+                  Found {suggestions.length} result{suggestions.length !== 1 ? 's' : ''}
+                </s-text>
+              </s-stack>
               <s-clickable
                 onClick={() => setPanelOpen(false)}
                 accessibilityLabel="Hide suggestions"
               >
-                <s-text color="subdued">
-                  Hide
-                </s-text>
+                <s-icon type="x" size="small" aria-hidden="true" />
               </s-clickable>
             </s-stack>
 
