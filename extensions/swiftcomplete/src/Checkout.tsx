@@ -4,14 +4,15 @@ import { render } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { useApplyShippingAddressChange } from '@shopify/ui-extensions/checkout/preact';
 import { Location } from "./type"
-import { DEBOUNCE_MS, LOOKUP_ENDPOINT, LOOKUP_PARAMS, MAX_RESULTS, MIN_QUERY_LENGTH } from './config';
+import { DEBOUNCE_MS, LOOKUP_ENDPOINT, LOOKUP_PARAMS, MIN_QUERY_LENGTH } from './config';
 import SuggestionList from './SuggestionList';
 
 type BannerTone = 'success' | 'critical';
 type BannerState = { tone: BannerTone; message: string } | null;
 
-function buildLookupUrl(query?: string, container?: string) {
+function buildLookupUrl(maxResult: number, query?: string, container?: string) {
   const params = new URLSearchParams(LOOKUP_PARAMS);
+  params.set('maxResults', String(maxResult));
   if (query) {
     params.set('text', query);
   }
@@ -95,14 +96,13 @@ function AddressLookupExtension() {
       abortRef.current = new AbortController();
 
       try {
-        const res = await fetch(buildLookupUrl(trimmedValue), {
+        const res = await fetch(buildLookupUrl(5, trimmedValue), {
           signal: abortRef.current.signal,
         });
         if (!res.ok) throw new Error(`Lookup failed ${res.status}`);
         const data = (await res.json()) as Location[];
-        const next = Array.isArray(data) ? data.slice(0, MAX_RESULTS) : [];
-        setSuggestions(next);
-        setPanelOpen(next.length > 0);
+        setSuggestions(data);
+        setPanelOpen(data.length > 0);
       } catch (err) {
         if (abortRef.current?.signal.aborted) return;
         console.error('Lookup error', err);
@@ -134,7 +134,7 @@ function AddressLookupExtension() {
 
         try {
           const res = await fetch(
-            buildLookupUrl(undefined, place.container),
+            buildLookupUrl(100, undefined, place.container),
           );
 
           if (!res.ok) {
@@ -142,15 +142,14 @@ function AddressLookupExtension() {
           }
 
           const data = (await res.json()) as Location[];
-          const next = Array.isArray(data) ? data.slice(0, MAX_RESULTS) : [];
 
-          if (next.length === 0) {
+          if (data.length === 0) {
             showBanner(
               'critical',
               'We couldn’t find addresses for that location. Try another suggestion.',
             );
           } else {
-            setSuggestions(next);
+            setSuggestions(data);
             setPanelOpen(true);
           }
         } catch (error) {
@@ -328,11 +327,30 @@ function AddressLookupExtension() {
                 </s-text>
               </s-stack>
             ) : (
-              <SuggestionList
-                suggestions={suggestions}
-                activeSuggestionKey={activeSuggestionKey}
-                onSelect={handleSelectSuggestion}
-              />
+              (() => {
+                const suggestionList = (
+                  <SuggestionList
+                    suggestions={suggestions}
+                    activeSuggestionKey={activeSuggestionKey}
+                    onSelect={handleSelectSuggestion}
+                  />
+                );
+                const shouldClampHeight =
+                  suggestions.length > 5;
+
+                if (!shouldClampHeight) {
+                  return suggestionList;
+                }
+
+                return (
+                  <s-scroll-box
+                    maxBlockSize="324px"
+                    overflow="auto"
+                  >
+                    {suggestionList}
+                  </s-scroll-box>
+                );
+              })()
             )}
           </s-stack>
         </s-box>

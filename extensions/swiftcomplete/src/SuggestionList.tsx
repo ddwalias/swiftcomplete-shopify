@@ -34,7 +34,7 @@ export default function SuggestionList({
               accessibilityLabel={`Use address ${suggestion.primary.text}`}
             >
               <s-box
-                padding='small-200'
+                padding='small'
                 background={isActive ? 'subdued' : 'transparent'}
               >
                 <s-stack direction="block">
@@ -44,7 +44,6 @@ export default function SuggestionList({
                   />
                   <s-stack
                     direction="inline"
-                    gap="small-100"
                     alignItems="center"
                     justifyContent="space-between"
                   >
