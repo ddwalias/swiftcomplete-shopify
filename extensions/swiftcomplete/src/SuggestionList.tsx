@@ -7,12 +7,10 @@ function suggestionKey({ primary, secondary }: Location) {
 
 export default function SuggestionList({
   suggestions,
-  highlightQuery,
   activeSuggestionKey,
   onSelect,
 }: {
   suggestions: Location[];
-  highlightQuery: string;
   activeSuggestionKey: string | null;
   onSelect: (suggestion: Location) => Promise<void> | void;
 }) {
@@ -43,7 +41,6 @@ export default function SuggestionList({
                   <HighlightedText
                     text={suggestion.primary.text}
                     highlights={suggestion.primary.highlights}
-                    fallbackQuery={highlightQuery}
                   />
                   <s-stack
                     direction="inline"

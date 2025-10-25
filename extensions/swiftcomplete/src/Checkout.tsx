@@ -238,7 +238,6 @@ function AddressLookupExtension() {
   }, [clearBanner]);
 
   const trimmedQuery = inputValue.trim();
-  const highlightQuery = trimmedQuery.length > 0 ? trimmedQuery : inputValue;
   const hasSuggestions = suggestions.length > 0;
   const showEmptyState =
     !isSearching && !hasSuggestions && trimmedQuery.length >= MIN_QUERY_LENGTH;
@@ -325,7 +324,6 @@ function AddressLookupExtension() {
             ) : (
               <SuggestionList
                 suggestions={suggestions}
-                highlightQuery={highlightQuery}
                 activeSuggestionKey={activeSuggestionKey}
                 onSelect={handleSelectSuggestion}
               />
