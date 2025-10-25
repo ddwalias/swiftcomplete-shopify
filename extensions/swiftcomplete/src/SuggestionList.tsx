@@ -45,13 +45,28 @@ export default function SuggestionList({
                     highlights={suggestion.primary.highlights}
                     fallbackQuery={highlightQuery}
                   />
-                  <s-stack direction="inline" gap="small-100" alignItems="center">
+                  <s-stack
+                    direction="inline"
+                    gap="small-100"
+                    alignItems="center"
+                    justifyContent="space-between"
+                  >
                     <s-text color="subdued">
                       {suggestion.secondary.text}
                     </s-text>
-                    {isActive && (
-                      <s-spinner size="small" accessibilityLabel="Applying address" />
-                    )}
+                    <s-stack direction="inline" alignItems="center">
+                      {suggestion.isContainer && (
+                        <s-stack direction="inline" gap="small-200" alignItems="center">
+                          <s-text color="subdued">
+                            More
+                          </s-text>
+                          <s-icon type="chevron-right" size="small-200" aria-hidden="true" />
+                        </s-stack>
+                      )}
+                      {isActive && (
+                        <s-spinner size="small" accessibilityLabel="Applying address" />
+                      )}
+                    </s-stack>
                   </s-stack>
                 </s-stack>
               </s-box>
@@ -63,4 +78,3 @@ export default function SuggestionList({
     </s-stack>
   );
 }
-
