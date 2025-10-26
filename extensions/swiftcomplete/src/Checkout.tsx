@@ -16,6 +16,14 @@ import SuggestionList from './SuggestionList';
 type BannerTone = 'success' | 'critical';
 type BannerState = { tone: BannerTone; message: string } | null;
 
+type SelectionState =
+  | { status: 'idle'; key: null }
+  | { status: 'pending' | 'settled'; key: string };
+
+function createSelectionState(): SelectionState {
+  return { status: 'idle', key: null };
+}
+
 type LookupParams = {
   maxResults?: number;
   query?: string;
@@ -70,11 +78,8 @@ function AddressLookupExtension() {
   const [suggestions, setSuggestions] = useState<Location[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [statusBanner, setStatusBanner] = useState<BannerState>(null);
-  const [activeSuggestionKey, setActiveSuggestionKey] = useState<string | null>(
-    null,
-  );
-  const [selectedSuggestionKey, setSelectedSuggestionKey] = useState<string | null>(
-    null,
+  const [selectionState, setSelectionState] = useState<SelectionState>(
+    createSelectionState,
   );
   const [panelOpen, setPanelOpen] = useState(false);
 
@@ -89,6 +94,11 @@ function AddressLookupExtension() {
   );
   const clearBanner = useCallback(() => setStatusBanner(null), []);
 
+  const resetSelectionState = useCallback(
+    () => setSelectionState(createSelectionState()),
+    [],
+  );
+
   useEffect(() => {
     const trimmedValue = inputValue.trim();
 
@@ -96,8 +106,7 @@ function AddressLookupExtension() {
       setSuggestions([]);
       setPanelOpen(false);
       setIsSearching(false);
-      setActiveSuggestionKey(null);
-      setSelectedSuggestionKey(null);
+      resetSelectionState();
       return;
     }
 
@@ -132,7 +141,7 @@ function AddressLookupExtension() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       abortRef.current?.abort();
     };
-  }, [inputValue, clearBanner, showBanner]);
+  }, [inputValue, clearBanner, resetSelectionState, showBanner]);
 
   const handleSelectSuggestion = useCallback(
     async (place: Location) => {
@@ -142,8 +151,7 @@ function AddressLookupExtension() {
       }
 
       const selectionKey = getLocationKey(place);
-      setActiveSuggestionKey(selectionKey);
-      setSelectedSuggestionKey(selectionKey);
+      setSelectionState({ status: 'pending', key: selectionKey });
 
       if (place.isContainer && place.container) {
         setIsSearching(true);
@@ -176,8 +184,7 @@ function AddressLookupExtension() {
           );
         } finally {
           setIsSearching(false);
-          setActiveSuggestionKey(null);
-          setSelectedSuggestionKey(null);
+          resetSelectionState();
         }
 
         return;
@@ -231,17 +238,16 @@ function AddressLookupExtension() {
           'Something went wrong while applying the address. Please try again.',
         );
       } finally {
-        setActiveSuggestionKey(null);
+        setSelectionState({ status: 'settled', key: selectionKey });
       }
     },
-    [applyShippingAddressChange, clearBanner, showBanner],
+    [applyShippingAddressChange, clearBanner, resetSelectionState, showBanner],
   );
 
   const handleInput = (event: Event) => {
     const { value } = event.currentTarget as HTMLInputElement;
     setInputValue(value ?? '');
-    setActiveSuggestionKey(null);
-    setSelectedSuggestionKey(null);
+    resetSelectionState();
     clearBanner();
   };
 
@@ -251,10 +257,14 @@ function AddressLookupExtension() {
     setInputValue('');
     setSuggestions([]);
     setPanelOpen(false);
-    setActiveSuggestionKey(null);
-    setSelectedSuggestionKey(null);
+    resetSelectionState();
     clearBanner();
-  }, [clearBanner]);
+  }, [clearBanner, resetSelectionState]);
+
+  const activeSuggestionKey =
+    selectionState.status === 'pending' ? selectionState.key : null;
+  const selectedSuggestionKey =
+    selectionState.status === 'idle' ? null : selectionState.key;
 
   const trimmedQuery = inputValue.trim();
   const hasSuggestions = suggestions.length > 0;
