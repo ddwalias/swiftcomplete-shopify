@@ -3,16 +3,32 @@ import '@shopify/ui-extensions/preact';
 import { render } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { useApplyShippingAddressChange } from '@shopify/ui-extensions/checkout/preact';
-import { Location } from "./type"
-import { DEBOUNCE_MS, LOOKUP_ENDPOINT, LOOKUP_PARAMS, MIN_QUERY_LENGTH } from './config';
+import { Location } from './type';
+import { getLocationKey } from './location';
+import {
+  DEBOUNCE_MS,
+  LOOKUP_ENDPOINT,
+  LOOKUP_PARAMS,
+  MIN_QUERY_LENGTH,
+} from './config';
 import SuggestionList from './SuggestionList';
 
 type BannerTone = 'success' | 'critical';
 type BannerState = { tone: BannerTone; message: string } | null;
 
-function buildLookupUrl(maxResult: number, query?: string, container?: string) {
+type LookupParams = {
+  maxResults?: number;
+  query?: string;
+  container?: string;
+};
+
+function buildLookupUrl({
+  maxResults = 5,
+  query,
+  container,
+}: LookupParams = {}) {
   const params = new URLSearchParams(LOOKUP_PARAMS);
-  params.set('maxResults', String(maxResult));
+  params.set('maxResults', String(maxResults));
   if (query) {
     params.set('text', query);
   }
@@ -20,10 +36,6 @@ function buildLookupUrl(maxResult: number, query?: string, container?: string) {
     params.set('container', container);
   }
   return `${LOOKUP_ENDPOINT}?${params.toString()}`;
-}
-
-function suggestionKey({ primary, secondary }: Location) {
-  return `${primary.text}-${secondary.text}`;
 }
 
 function splitPrimaryTextSegments(
@@ -68,7 +80,6 @@ function AddressLookupExtension() {
 
   const debounceRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const lastQueryRef = useRef('');
 
   const showBanner = useCallback(
     (tone: BannerTone, message: string) => {
@@ -94,14 +105,13 @@ function AddressLookupExtension() {
 
     setIsSearching(true);
     clearBanner();
-    lastQueryRef.current = trimmedValue;
 
     debounceRef.current = window.setTimeout(async () => {
       abortRef.current?.abort();
       abortRef.current = new AbortController();
 
       try {
-        const res = await fetch(buildLookupUrl(5, trimmedValue), {
+        const res = await fetch(buildLookupUrl({ query: trimmedValue }), {
           signal: abortRef.current.signal,
         });
         if (!res.ok) throw new Error(`Lookup failed ${res.status}`);
@@ -131,7 +141,7 @@ function AddressLookupExtension() {
         return;
       }
 
-      const selectionKey = suggestionKey(place);
+      const selectionKey = getLocationKey(place);
       setActiveSuggestionKey(selectionKey);
       setSelectedSuggestionKey(selectionKey);
 
@@ -140,7 +150,7 @@ function AddressLookupExtension() {
 
         try {
           const res = await fetch(
-            buildLookupUrl(100, undefined, place.container),
+            buildLookupUrl({ maxResults: 100, container: place.container }),
           );
 
           if (!res.ok) {

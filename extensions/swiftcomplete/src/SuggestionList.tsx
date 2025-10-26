@@ -1,9 +1,6 @@
-import HighlightedText from "./HighlightedText";
-import type { Location } from "./type"
-
-function suggestionKey({ primary, secondary }: Location) {
-  return `${primary.text}-${secondary.text}`;
-}
+import HighlightedText from './HighlightedText';
+import type { Location } from './type';
+import { getLocationKey } from './location';
 
 export default function SuggestionList({
   suggestions,
@@ -23,7 +20,7 @@ export default function SuggestionList({
   return (
     <s-stack direction="block">
       {suggestions.map((suggestion, index) => {
-        const suggestionId = suggestionKey(suggestion);
+        const suggestionId = getLocationKey(suggestion);
         const isActive = activeSuggestionKey === suggestionId;
         const isSelected = selectedSuggestionKey === suggestionId;
         const isLast = index === suggestions.length - 1;
