@@ -71,7 +71,7 @@ function isBusinessLocation(type?: string | null) {
   return type === 'address.business';
 }
 
-function AddressLookupExtension() {
+function Swiftcomplete() {
   const applyShippingAddressChange = useApplyShippingAddressChange();
 
   const [inputValue, setInputValue] = useState('');
@@ -400,7 +400,5 @@ function AddressLookupExtension() {
 }
 
 export default async () => {
-  render(<AddressLookupExtension />, document.body);
+  render(<Swiftcomplete />, document.body);
 };
-
-export { };

@@ -16,7 +16,7 @@ uid = "2f08d497-59ff-2eab-3211-5a6e663329c738119e86"
 # https://shopify.dev/docs/api/checkout-ui-extensions/latest/extension-targets-overview
 
 [[extensions.targeting]]
-module = "./src/Checkout.tsx"
+module = "./src/Swiftcomplete.tsx"
 target = "purchase.checkout.delivery-address.render-before"
 
 [extensions.capabilities]
