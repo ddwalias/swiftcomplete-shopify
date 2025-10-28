@@ -80,13 +80,21 @@ function buildAddressFields(location: Location) {
   if (poBox) {
     address1 = poBox;
   } else {
-    address1 = [buildingNumber, roadPrimary]
-      .filter(Boolean)
-      .join(' ');
+    if (buildingNumber && roadPrimary) {
+      address1 = `${buildingNumber} ${roadPrimary}`;
+    } else if (buildingNumber) {
+      address1 = buildingNumber;
+    } else if (roadPrimary) {
+      address1 = roadPrimary;
+    }
 
-    address2 = [subBuildingValue, buildingName]
-      .filter(Boolean)
-      .join(', ');
+    if (subBuildingValue && buildingName) {
+      address2 = `${subBuildingValue}, ${buildingName}`;
+    } else if (subBuildingValue) {
+      address2 = subBuildingValue;
+    } else if (buildingName) {
+      address2 = buildingName;
+    }
   }
   return {
     address1,
