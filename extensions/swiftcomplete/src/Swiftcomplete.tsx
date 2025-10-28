@@ -1,8 +1,8 @@
 import '@shopify/ui-extensions/preact';
 
 import { render } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
-import { useSignal } from '@preact/signals'
+import { useRef } from 'preact/hooks';
+import { useSignal, useSignalEffect } from '@preact/signals'
 import { useApplyShippingAddressChange } from '@shopify/ui-extensions/checkout/preact';
 import { Location } from './type';
 import { getLocationKey } from './location';
@@ -84,7 +84,6 @@ function Swiftcomplete() {
   );
   const panelOpen = useSignal(false);
 
-  const debounceRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const showBanner = (tone: BannerTone, message: string) => { statusBanner.value = { tone, message }; };
@@ -92,8 +91,11 @@ function Swiftcomplete() {
 
   const resetSelectionState = () => selectionState.value = createSelectionState();
 
-  useEffect(() => {
+  useSignalEffect(() => {
     const trimmedValue = inputValue.value.trim();
+    let disposed = false;
+    abortRef.current?.abort();
+    abortRef.current = null;
 
     if (trimmedValue.length < MIN_QUERY_LENGTH) {
       suggestions.value = [];
@@ -103,38 +105,47 @@ function Swiftcomplete() {
       return;
     }
 
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-
     isSearching.value = true;
     clearBanner();
 
-    debounceRef.current = window.setTimeout(async () => {
-      abortRef.current?.abort();
-      abortRef.current = new AbortController();
-
+    const timeoutId = setTimeout(async () => {
+      if (disposed) return;
+      const controller = new AbortController();
+      abortRef.current = controller;
       try {
         const res = await fetch(buildLookupUrl({ query: trimmedValue }), {
-          signal: abortRef.current.signal,
+          signal: controller.signal,
         });
         if (!res.ok) throw new Error(`Lookup failed ${res.status}`);
         const data = (await res.json()) as Location[];
+        if (disposed || controller.signal.aborted) {
+          return;
+        }
         suggestions.value = data;
         panelOpen.value = data.length > 0;
       } catch (err) {
-        if (abortRef.current?.signal.aborted) return;
+        if (disposed || controller.signal.aborted) {
+          return;
+        }
+
         console.error('Lookup error', err);
         suggestions.value = [];
         panelOpen.value = false;
         showBanner('critical', 'We couldn’t fetch address suggestions. Try again shortly.');
       } finally {
-        isSearching.value = false;
+        if (!disposed && abortRef.current === controller) {
+          isSearching.value = false;
+          abortRef.current = null;
+        }
       }
     }, DEBOUNCE_MS);
     return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      disposed = true;
+      clearTimeout(timeoutId)
       abortRef.current?.abort();
+      abortRef.current = null;
     };
-  }, [inputValue.value, clearBanner, resetSelectionState, showBanner]);
+  });
 
   const handleSelectSuggestion =
     async (place: Location) => {
