@@ -76,7 +76,7 @@ function Swiftcomplete() {
   const applyShippingAddressChange = useApplyShippingAddressChange();
 
   const inputValue = useSignal('');
-  const [suggestions, setSuggestions] = useState<Location[]>([]);
+  const suggestions = useSignal<Location[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [statusBanner, setStatusBanner] = useState<BannerState>(null);
   const [selectionState, setSelectionState] = useState<SelectionState>(
@@ -104,7 +104,7 @@ function Swiftcomplete() {
     const trimmedValue = inputValue.value.trim();
 
     if (trimmedValue.length < MIN_QUERY_LENGTH) {
-      setSuggestions([]);
+      suggestions.value = [];
       setPanelOpen(false);
       setIsSearching(false);
       resetSelectionState();
@@ -126,12 +126,12 @@ function Swiftcomplete() {
         });
         if (!res.ok) throw new Error(`Lookup failed ${res.status}`);
         const data = (await res.json()) as Location[];
-        setSuggestions(data);
+        suggestions.value = data;
         setPanelOpen(data.length > 0);
       } catch (err) {
         if (abortRef.current?.signal.aborted) return;
         console.error('Lookup error', err);
-        setSuggestions([]);
+        suggestions.value = [];
         setPanelOpen(false);
         showBanner('critical', 'We couldn’t fetch address suggestions. Try again shortly.');
       } finally {
@@ -174,7 +174,7 @@ function Swiftcomplete() {
               'We couldn’t find addresses for that location. Try another suggestion.',
             );
           } else {
-            setSuggestions(data);
+            suggestions.value = data;
             setPanelOpen(true);
           }
         } catch (error) {
@@ -252,11 +252,11 @@ function Swiftcomplete() {
     clearBanner();
   };
 
-  const handleFocus = () => setPanelOpen(suggestions.length > 0);
+  const handleFocus = () => setPanelOpen(suggestions.value.length > 0);
 
   const handleClear = useCallback(() => {
     inputValue.value = '';
-    setSuggestions([]);
+    suggestions.value = [];
     setPanelOpen(false);
     resetSelectionState();
     clearBanner();
@@ -268,7 +268,7 @@ function Swiftcomplete() {
     selectionState.status === 'idle' ? null : selectionState.key;
 
   const trimmedQuery = inputValue.value.trim();
-  const hasSuggestions = suggestions.length > 0;
+  const hasSuggestions = suggestions.value.length > 0;
   const showEmptyState =
     !isSearching && !hasSuggestions && trimmedQuery.length >= MIN_QUERY_LENGTH;
   const showClearAccessory = inputValue.value.length > 0;
@@ -339,7 +339,7 @@ function Swiftcomplete() {
               <s-stack direction="inline" gap="small-200" alignItems="center">
                 <s-text type="strong">Suggested matches</s-text>
                 <s-text color="subdued">
-                  Found {suggestions.length} result{suggestions.length !== 1 ? 's' : ''}
+                  Found {suggestions.value.length} result{suggestions.value.length !== 1 ? 's' : ''}
                 </s-text>
               </s-stack>
               <s-clickable
@@ -361,14 +361,14 @@ function Swiftcomplete() {
               (() => {
                 const suggestionList = (
                   <SuggestionList
-                    suggestions={suggestions}
+                    suggestions={suggestions.value}
                     activeSuggestionKey={activeSuggestionKey}
                     selectedSuggestionKey={selectedSuggestionKey}
                     onSelect={handleSelectSuggestion}
                   />
                 );
                 const shouldClampHeight =
-                  suggestions.length > 5;
+                  suggestions.value.length > 5;
 
                 if (!shouldClampHeight) {
                   return suggestionList;
