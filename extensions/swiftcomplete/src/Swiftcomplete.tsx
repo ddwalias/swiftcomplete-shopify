@@ -403,32 +403,25 @@ function Swiftcomplete() {
                   Looking for nearby matches…
                 </s-text>
               </s-stack>
+            ) : suggestions.value.length > 5 ? (
+              <s-scroll-box
+                maxBlockSize="324px"
+                overflow="auto"
+              >
+                <SuggestionList
+                  suggestions={suggestions.value}
+                  activeSuggestionKey={activeSuggestionKey}
+                  selectedSuggestionKey={selectedSuggestionKey}
+                  onSelect={handleSelectSuggestion}
+                />
+              </s-scroll-box>
             ) : (
-              (() => {
-                const suggestionList = (
-                  <SuggestionList
-                    suggestions={suggestions.value}
-                    activeSuggestionKey={activeSuggestionKey}
-                    selectedSuggestionKey={selectedSuggestionKey}
-                    onSelect={handleSelectSuggestion}
-                  />
-                );
-                const shouldClampHeight =
-                  suggestions.value.length > 5;
-
-                if (!shouldClampHeight) {
-                  return suggestionList;
-                }
-
-                return (
-                  <s-scroll-box
-                    maxBlockSize="324px"
-                    overflow="auto"
-                  >
-                    {suggestionList}
-                  </s-scroll-box>
-                );
-              })()
+              <SuggestionList
+                suggestions={suggestions.value}
+                activeSuggestionKey={activeSuggestionKey}
+                selectedSuggestionKey={selectedSuggestionKey}
+                onSelect={handleSelectSuggestion}
+              />
             )}
           </s-stack>
         </s-box>
