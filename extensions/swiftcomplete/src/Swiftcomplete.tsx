@@ -26,33 +26,27 @@ function createSelectionState(): SelectionState {
 }
 
 type LookupParams = {
-  maxResults?: number;
+  maxResults: number;
   query?: string;
   container?: string;
   populateIndex?: number;
 };
 
-type ExecutedLookupParams = {
-  maxResults: number;
-  query?: string;
-  container?: string;
-};
-
 function buildLookupUrl({
-  maxResults = 5,
+  maxResults,
   query,
   container,
   populateIndex,
-}: LookupParams = {}) {
+}: LookupParams) {
   const params = new URLSearchParams(LOOKUP_PARAMS);
   params.set('maxResults', String(maxResults));
-  if (query) {
+  if (query !== undefined) {
     params.set('text', query);
   }
-  if (container) {
+  if (container !== undefined) {
     params.set('container', container);
   }
-  if (typeof populateIndex === 'number') {
+  if (populateIndex !== undefined) {
     params.set('populateIndex', String(populateIndex));
   }
   return `${LOOKUP_ENDPOINT}?${params.toString()}`;
@@ -118,7 +112,7 @@ function Swiftcomplete() {
   const panelOpen = useSignal(false);
 
   const abortRef = useRef<AbortController | null>(null);
-  const lastLookupParamsRef = useRef<ExecutedLookupParams | null>(null);
+  const lastLookupParamsRef = useRef<Omit<LookupParams, "maxResults"> | null>(null);
 
   const showBanner = (tone: BannerTone, message: string) => { statusBanner.value = { tone, message }; };
   const clearBanner = () => statusBanner.value = null;
@@ -143,17 +137,15 @@ function Swiftcomplete() {
     isSearching.value = true;
     clearBanner();
 
-    const lookupParams: ExecutedLookupParams = {
-      maxResults: 5,
-      query: trimmedValue,
-    };
-
     const timeoutId = setTimeout(async () => {
       if (disposed) return;
       const controller = new AbortController();
       abortRef.current = controller;
       try {
-        const res = await fetch(buildLookupUrl(lookupParams), {
+        const res = await fetch(buildLookupUrl({
+          maxResults: 5,
+          query: trimmedValue,
+        }), {
           signal: controller.signal,
         });
         if (!res.ok) throw new Error(`Lookup failed ${res.status}`);
@@ -163,7 +155,7 @@ function Swiftcomplete() {
         }
         suggestions.value = data;
         panelOpen.value = data.length > 0;
-        lastLookupParamsRef.current = lookupParams;
+        lastLookupParamsRef.current = { query: trimmedValue };
       } catch (err) {
         if (disposed || controller.signal.aborted) {
           return;
@@ -201,14 +193,12 @@ function Swiftcomplete() {
     if (place.container) {
       isSearching.value = true;
 
-      const containerLookup: ExecutedLookupParams = {
-        maxResults: 100,
-        container: place.container,
-      };
-
       try {
         const res = await fetch(
-          buildLookupUrl(containerLookup),
+          buildLookupUrl({
+            maxResults: 100,
+            container: place.container,
+          })
         );
 
         if (!res.ok) {
@@ -225,7 +215,7 @@ function Swiftcomplete() {
         } else {
           suggestions.value = data;
           panelOpen.value = true;
-          lastLookupParamsRef.current = containerLookup;
+          lastLookupParamsRef.current = { container: place.container };
         }
       } catch (error) {
         console.error('Container expansion failed', error);
@@ -242,7 +232,8 @@ function Swiftcomplete() {
     }
 
     const lookupWithPopulate: LookupParams = {
-      ...lastLookupParamsRef.current,
+      ...(lastLookupParamsRef.current ?? {}),
+      maxResults: index + 1,
       populateIndex: index,
     };
 
@@ -258,8 +249,6 @@ function Swiftcomplete() {
       if (!locationFromResponse) {
         throw new Error(`Populate lookup missing index ${index}`);
       }
-      suggestions.value = data;
-      panelOpen.value = data.length > 0;
       populatedLocation = locationFromResponse;
     } catch (error) {
       console.error('Populate lookup failed', error);
