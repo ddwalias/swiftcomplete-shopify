@@ -233,37 +233,8 @@ function Swiftcomplete() {
       return;
     }
 
-    const baseLookup =
-      lastLookupParamsRef.current ??
-      (() => {
-        const trimmed = inputValue.value.trim();
-        if (place.container) {
-          return {
-            maxResults: 100,
-            container: place.container,
-          } satisfies ExecutedLookupParams;
-        }
-        if (trimmed.length >= MIN_QUERY_LENGTH) {
-          return {
-            maxResults: 5,
-            query: trimmed,
-          } satisfies ExecutedLookupParams;
-        }
-        return null;
-      })();
-
-    if (!baseLookup) {
-      console.error('Populate lookup skipped: missing lookup context');
-      showBanner(
-        'critical',
-        'We couldn’t fetch that address. Try another suggestion.',
-      );
-      resetSelectionState();
-      return;
-    }
-
     const lookupWithPopulate: LookupParams = {
-      ...baseLookup,
+      ...lastLookupParamsRef.current,
       populateIndex: index,
     };
 
@@ -281,11 +252,6 @@ function Swiftcomplete() {
       }
       suggestions.value = data;
       panelOpen.value = data.length > 0;
-      lastLookupParamsRef.current = {
-        maxResults: baseLookup.maxResults,
-        query: baseLookup.query,
-        container: baseLookup.container,
-      };
       populatedLocation = locationFromResponse;
     } catch (error) {
       console.error('Populate lookup failed', error);
