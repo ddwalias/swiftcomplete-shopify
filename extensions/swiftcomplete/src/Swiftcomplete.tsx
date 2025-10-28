@@ -1,7 +1,7 @@
 import '@shopify/ui-extensions/preact';
 
 import { render } from 'preact';
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals'
 import { useApplyShippingAddressChange } from '@shopify/ui-extensions/checkout/preact';
 import { Location } from './type';
@@ -82,7 +82,7 @@ function Swiftcomplete() {
   const selectionState = useSignal<SelectionState>(
     createSelectionState(),
   );
-  const [panelOpen, setPanelOpen] = useState(false);
+  const panelOpen = useSignal(false);
 
   const debounceRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -105,7 +105,7 @@ function Swiftcomplete() {
 
     if (trimmedValue.length < MIN_QUERY_LENGTH) {
       suggestions.value = [];
-      setPanelOpen(false);
+      panelOpen.value = false;
       isSearching.value = false;
       resetSelectionState();
       return;
@@ -127,12 +127,12 @@ function Swiftcomplete() {
         if (!res.ok) throw new Error(`Lookup failed ${res.status}`);
         const data = (await res.json()) as Location[];
         suggestions.value = data;
-        setPanelOpen(data.length > 0);
+        panelOpen.value = data.length > 0;
       } catch (err) {
         if (abortRef.current?.signal.aborted) return;
         console.error('Lookup error', err);
         suggestions.value = [];
-        setPanelOpen(false);
+        panelOpen.value = false;
         showBanner('critical', 'We couldn’t fetch address suggestions. Try again shortly.');
       } finally {
         isSearching.value = false;
@@ -175,7 +175,7 @@ function Swiftcomplete() {
             );
           } else {
             suggestions.value = data;
-            setPanelOpen(true);
+            panelOpen.value = true;
           }
         } catch (error) {
           console.error('Container expansion failed', error);
@@ -252,12 +252,12 @@ function Swiftcomplete() {
     clearBanner();
   };
 
-  const handleFocus = () => setPanelOpen(suggestions.value.length > 0);
+  const handleFocus = () => panelOpen.value = suggestions.value.length > 0;
 
   const handleClear = useCallback(() => {
     inputValue.value = '';
     suggestions.value = [];
-    setPanelOpen(false);
+    panelOpen.value = false;
     resetSelectionState();
     clearBanner();
   }, [clearBanner, resetSelectionState]);
@@ -311,7 +311,7 @@ function Swiftcomplete() {
             </s-clickable>
           )}
         </s-text-field>
-        {isSearching.value && !panelOpen && (
+        {isSearching.value && !panelOpen.value && (
           <s-stack direction="inline" gap="small-200" alignItems="center">
             <s-spinner size="base" accessibilityLabel="Searching addresses" />
             <s-text color="subdued">
@@ -321,7 +321,7 @@ function Swiftcomplete() {
         )}
       </s-stack>
 
-      {panelOpen && (
+      {panelOpen.value && (
         <s-box
           border="base"
           borderRadius="base"
@@ -343,7 +343,7 @@ function Swiftcomplete() {
                 </s-text>
               </s-stack>
               <s-clickable
-                onClick={() => setPanelOpen(false)}
+                onClick={() => panelOpen.value = false}
                 accessibilityLabel="Hide suggestions"
               >
                 <s-icon type="x" size="small" aria-hidden="true" />
@@ -388,7 +388,7 @@ function Swiftcomplete() {
         </s-box>
       )}
 
-      {!panelOpen && showEmptyState && (
+      {!panelOpen.value && showEmptyState && (
         <s-stack direction="block" gap="small-200">
           <s-text type="strong">No matches yet</s-text>
           <s-text color="subdued">
