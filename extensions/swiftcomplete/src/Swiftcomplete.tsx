@@ -77,7 +77,7 @@ function Swiftcomplete() {
 
   const inputValue = useSignal('');
   const suggestions = useSignal<Location[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const isSearching = useSignal(false);
   const [statusBanner, setStatusBanner] = useState<BannerState>(null);
   const [selectionState, setSelectionState] = useState<SelectionState>(
     createSelectionState,
@@ -106,14 +106,14 @@ function Swiftcomplete() {
     if (trimmedValue.length < MIN_QUERY_LENGTH) {
       suggestions.value = [];
       setPanelOpen(false);
-      setIsSearching(false);
+      isSearching.value = false;
       resetSelectionState();
       return;
     }
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    setIsSearching(true);
+    isSearching.value = true;
     clearBanner();
 
     debounceRef.current = window.setTimeout(async () => {
@@ -135,7 +135,7 @@ function Swiftcomplete() {
         setPanelOpen(false);
         showBanner('critical', 'We couldn’t fetch address suggestions. Try again shortly.');
       } finally {
-        setIsSearching(false);
+        isSearching.value = false;
       }
     }, DEBOUNCE_MS);
     return () => {
@@ -155,7 +155,7 @@ function Swiftcomplete() {
       setSelectionState({ status: 'pending', key: selectionKey });
 
       if (place.isContainer && place.container) {
-        setIsSearching(true);
+        isSearching.value = true;
 
         try {
           const res = await fetch(
@@ -184,7 +184,7 @@ function Swiftcomplete() {
             'We couldn’t expand that result. Please try a different option.',
           );
         } finally {
-          setIsSearching(false);
+          isSearching.value = false;
           resetSelectionState();
         }
 
@@ -270,7 +270,7 @@ function Swiftcomplete() {
   const trimmedQuery = inputValue.value.trim();
   const hasSuggestions = suggestions.value.length > 0;
   const showEmptyState =
-    !isSearching && !hasSuggestions && trimmedQuery.length >= MIN_QUERY_LENGTH;
+    !isSearching.value && !hasSuggestions && trimmedQuery.length >= MIN_QUERY_LENGTH;
   const showClearAccessory = inputValue.value.length > 0;
   return (
     <s-stack direction="block" gap="small">
@@ -311,7 +311,7 @@ function Swiftcomplete() {
             </s-clickable>
           )}
         </s-text-field>
-        {isSearching && !panelOpen && (
+        {isSearching.value && !panelOpen && (
           <s-stack direction="inline" gap="small-200" alignItems="center">
             <s-spinner size="base" accessibilityLabel="Searching addresses" />
             <s-text color="subdued">
@@ -350,7 +350,7 @@ function Swiftcomplete() {
               </s-clickable>
             </s-stack>
 
-            {isSearching ? (
+            {isSearching.value ? (
               <s-stack padding='small-200' direction="inline" gap="small-200" alignItems="center">
                 <s-spinner size="base" accessibilityLabel="Searching addresses" />
                 <s-text color="subdued">
