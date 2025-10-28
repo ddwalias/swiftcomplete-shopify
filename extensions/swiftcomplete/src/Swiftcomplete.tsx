@@ -298,9 +298,6 @@ function Swiftcomplete() {
 
   const handleClear = () => {
     inputValue.value = '';
-    suggestions.value = [];
-    panelOpen.value = false;
-    resetSelectionState();
     clearBanner();
     lastLookupParamsRef.current = null;
   };
