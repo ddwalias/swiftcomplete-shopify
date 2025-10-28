@@ -1,7 +1,7 @@
 import '@shopify/ui-extensions/preact';
 
 import { render } from 'preact';
-import { useCallback, useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals'
 import { useApplyShippingAddressChange } from '@shopify/ui-extensions/checkout/preact';
 import { Location } from './type';
@@ -87,18 +87,10 @@ function Swiftcomplete() {
   const debounceRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const showBanner = useCallback(
-    (tone: BannerTone, message: string) => {
-      statusBanner.value = { tone, message };
-    },
-    [],
-  );
-  const clearBanner = useCallback(() => statusBanner.value = null, []);
+  const showBanner = (tone: BannerTone, message: string) => { statusBanner.value = { tone, message }; };
+  const clearBanner = () => statusBanner.value = null;
 
-  const resetSelectionState = useCallback(
-    () => selectionState.value = createSelectionState(),
-    [],
-  );
+  const resetSelectionState = () => selectionState.value = createSelectionState();
 
   useEffect(() => {
     const trimmedValue = inputValue.value.trim();
@@ -144,7 +136,7 @@ function Swiftcomplete() {
     };
   }, [inputValue.value, clearBanner, resetSelectionState, showBanner]);
 
-  const handleSelectSuggestion = useCallback(
+  const handleSelectSuggestion =
     async (place: Location) => {
       if (!applyShippingAddressChange) {
         showBanner('critical', 'Address updates are not available right now.');
@@ -241,9 +233,7 @@ function Swiftcomplete() {
       } finally {
         selectionState.value = { status: 'settled', key: selectionKey };
       }
-    },
-    [applyShippingAddressChange, clearBanner, resetSelectionState, showBanner],
-  );
+    };
 
   const handleInput = (event: Event) => {
     const { value } = event.currentTarget as HTMLInputElement;
@@ -254,13 +244,13 @@ function Swiftcomplete() {
 
   const handleFocus = () => panelOpen.value = suggestions.value.length > 0;
 
-  const handleClear = useCallback(() => {
+  const handleClear = () => {
     inputValue.value = '';
     suggestions.value = [];
     panelOpen.value = false;
     resetSelectionState();
     clearBanner();
-  }, [clearBanner, resetSelectionState]);
+  };
 
   const activeSuggestionKey =
     selectionState.value.status === 'pending' ? selectionState.value.key : null;
