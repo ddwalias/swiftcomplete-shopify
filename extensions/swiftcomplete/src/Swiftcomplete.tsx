@@ -2,6 +2,7 @@ import '@shopify/ui-extensions/preact';
 
 import { render } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useSignal } from '@preact/signals'
 import { useApplyShippingAddressChange } from '@shopify/ui-extensions/checkout/preact';
 import { Location } from './type';
 import { getLocationKey } from './location';
@@ -74,7 +75,7 @@ function isBusinessLocation(type?: string | null) {
 function Swiftcomplete() {
   const applyShippingAddressChange = useApplyShippingAddressChange();
 
-  const [inputValue, setInputValue] = useState('');
+  const inputValue = useSignal('');
   const [suggestions, setSuggestions] = useState<Location[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [statusBanner, setStatusBanner] = useState<BannerState>(null);
@@ -100,7 +101,7 @@ function Swiftcomplete() {
   );
 
   useEffect(() => {
-    const trimmedValue = inputValue.trim();
+    const trimmedValue = inputValue.value.trim();
 
     if (trimmedValue.length < MIN_QUERY_LENGTH) {
       setSuggestions([]);
@@ -141,7 +142,7 @@ function Swiftcomplete() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       abortRef.current?.abort();
     };
-  }, [inputValue, clearBanner, resetSelectionState, showBanner]);
+  }, [inputValue.value, clearBanner, resetSelectionState, showBanner]);
 
   const handleSelectSuggestion = useCallback(
     async (place: Location) => {
@@ -246,7 +247,7 @@ function Swiftcomplete() {
 
   const handleInput = (event: Event) => {
     const { value } = event.currentTarget as HTMLInputElement;
-    setInputValue(value ?? '');
+    inputValue.value = value;
     resetSelectionState();
     clearBanner();
   };
@@ -254,7 +255,7 @@ function Swiftcomplete() {
   const handleFocus = () => setPanelOpen(suggestions.length > 0);
 
   const handleClear = useCallback(() => {
-    setInputValue('');
+    inputValue.value = '';
     setSuggestions([]);
     setPanelOpen(false);
     resetSelectionState();
@@ -266,11 +267,11 @@ function Swiftcomplete() {
   const selectedSuggestionKey =
     selectionState.status === 'idle' ? null : selectionState.key;
 
-  const trimmedQuery = inputValue.trim();
+  const trimmedQuery = inputValue.value.trim();
   const hasSuggestions = suggestions.length > 0;
   const showEmptyState =
     !isSearching && !hasSuggestions && trimmedQuery.length >= MIN_QUERY_LENGTH;
-  const showClearAccessory = inputValue.length > 0;
+  const showClearAccessory = inputValue.value.length > 0;
   return (
     <s-stack direction="block" gap="small">
       <s-stack direction="block" gap="small-200">
@@ -295,7 +296,7 @@ function Swiftcomplete() {
       <s-stack direction="block" gap="small-200">
         <s-text-field
           label="Type your address, postcode, or what3words"
-          value={inputValue}
+          value={inputValue.value}
           onInput={handleInput}
           onFocus={handleFocus}
           icon="search"
