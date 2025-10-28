@@ -79,8 +79,8 @@ function Swiftcomplete() {
   const suggestions = useSignal<Location[]>([]);
   const isSearching = useSignal(false);
   const statusBanner = useSignal<BannerState | null>(null);
-  const [selectionState, setSelectionState] = useState<SelectionState>(
-    createSelectionState,
+  const selectionState = useSignal<SelectionState>(
+    createSelectionState(),
   );
   const [panelOpen, setPanelOpen] = useState(false);
 
@@ -96,7 +96,7 @@ function Swiftcomplete() {
   const clearBanner = useCallback(() => statusBanner.value = null, []);
 
   const resetSelectionState = useCallback(
-    () => setSelectionState(createSelectionState()),
+    () => selectionState.value = createSelectionState(),
     [],
   );
 
@@ -152,7 +152,7 @@ function Swiftcomplete() {
       }
 
       const selectionKey = getLocationKey(place);
-      setSelectionState({ status: 'pending', key: selectionKey });
+      selectionState.value = { status: 'pending', key: selectionKey };
 
       if (place.isContainer && place.container) {
         isSearching.value = true;
@@ -239,7 +239,7 @@ function Swiftcomplete() {
           'Something went wrong while applying the address. Please try again.',
         );
       } finally {
-        setSelectionState({ status: 'settled', key: selectionKey });
+        selectionState.value = { status: 'settled', key: selectionKey };
       }
     },
     [applyShippingAddressChange, clearBanner, resetSelectionState, showBanner],
@@ -263,9 +263,9 @@ function Swiftcomplete() {
   }, [clearBanner, resetSelectionState]);
 
   const activeSuggestionKey =
-    selectionState.status === 'pending' ? selectionState.key : null;
+    selectionState.value.status === 'pending' ? selectionState.value.key : null;
   const selectedSuggestionKey =
-    selectionState.status === 'idle' ? null : selectionState.key;
+    selectionState.value.status === 'idle' ? null : selectionState.value.key;
 
   const trimmedQuery = inputValue.value.trim();
   const hasSuggestions = suggestions.value.length > 0;
