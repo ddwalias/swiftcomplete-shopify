@@ -58,7 +58,7 @@ export default function SuggestionList({
                           aria-hidden="true"
                         />
                       )}
-                      {suggestion.isContainer && (
+                      {suggestion.container && (
                         <s-stack direction="inline" gap="small-200" alignItems="center">
                           <s-text color="subdued">
                             More
