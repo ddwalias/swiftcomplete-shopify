@@ -78,7 +78,7 @@ function Swiftcomplete() {
   const inputValue = useSignal('');
   const suggestions = useSignal<Location[]>([]);
   const isSearching = useSignal(false);
-  const [statusBanner, setStatusBanner] = useState<BannerState>(null);
+  const statusBanner = useSignal<BannerState | null>(null);
   const [selectionState, setSelectionState] = useState<SelectionState>(
     createSelectionState,
   );
@@ -89,11 +89,11 @@ function Swiftcomplete() {
 
   const showBanner = useCallback(
     (tone: BannerTone, message: string) => {
-      setStatusBanner({ tone, message });
+      statusBanner.value = { tone, message };
     },
     [],
   );
-  const clearBanner = useCallback(() => setStatusBanner(null), []);
+  const clearBanner = useCallback(() => statusBanner.value = null, []);
 
   const resetSelectionState = useCallback(
     () => setSelectionState(createSelectionState()),
@@ -278,18 +278,18 @@ function Swiftcomplete() {
         <s-text type="strong">Swiftcomplete lookup</s-text>
       </s-stack>
 
-      {statusBanner && (
+      {statusBanner.value && (
         <s-banner
-          tone={statusBanner.tone}
+          tone={statusBanner.value.tone}
           heading={
-            statusBanner.tone === 'success'
+            statusBanner.value.tone === 'success'
               ? 'Address updated'
               : 'Address lookup unavailable'
           }
           dismissible
           onDismiss={clearBanner}
         >
-          <s-text>{statusBanner.message}</s-text>
+          <s-text>{statusBanner.value.message}</s-text>
         </s-banner>
       )}
 
