@@ -29,12 +29,20 @@ type LookupParams = {
   maxResults?: number;
   query?: string;
   container?: string;
+  populateIndex?: number;
+};
+
+type ExecutedLookupParams = {
+  maxResults: number;
+  query?: string;
+  container?: string;
 };
 
 function buildLookupUrl({
   maxResults = 5,
   query,
   container,
+  populateIndex,
 }: LookupParams = {}) {
   const params = new URLSearchParams(LOOKUP_PARAMS);
   params.set('maxResults', String(maxResults));
@@ -44,32 +52,49 @@ function buildLookupUrl({
   if (container) {
     params.set('container', container);
   }
+  if (typeof populateIndex === 'number') {
+    params.set('populateIndex', String(populateIndex));
+  }
   return `${LOOKUP_ENDPOINT}?${params.toString()}`;
 }
 
-function splitPrimaryTextSegments(
-  text?: string | null,
-): [string | undefined, string | undefined] {
-  if (!text) {
-    return [undefined, undefined];
+function buildAddressFields(location: Location) {
+  const record = location.populatedRecord;
+  const data = record?.data;
+  if (!record || !data) {
+    return null;
   }
 
-  const [firstSegment, ...rest] = text.split(',');
-  const leading = firstSegment?.trim();
-  const remainder = rest
-    .map((segment) => segment.trim())
-    .filter(Boolean)
-    .join(', ');
+  const company = data.business?.name?.text;
+  const subBuildingValue = data.subBuilding?.name?.text;
+  const buildingNumber = data.building?.number?.text;
+  const buildingName = data.building?.name?.text;
+  const roadPrimary = data.road?.primary?.text;
+  const city = data.place?.primary?.text;
+  const zip = data.postalCode?.text;
+  const poBox = data.poBox?.name.text;
 
-  return [leading || undefined, remainder || undefined];
-}
+  let address1 = '';
+  let address2 = '';
 
-function isSubbuildingLocation(type?: string | null) {
-  return type === 'address.residential.subbuilding.name';
-}
+  if (poBox) {
+    address1 = poBox;
+  } else {
+    address1 = [buildingNumber, roadPrimary]
+      .filter(Boolean)
+      .join(' ');
 
-function isBusinessLocation(type?: string | null) {
-  return type === 'address.business';
+    address2 = [subBuildingValue, buildingName]
+      .filter(Boolean)
+      .join(', ');
+  }
+  return {
+    address1,
+    address2,
+    company,
+    city,
+    zip,
+  };
 }
 
 function Swiftcomplete() {
@@ -85,6 +110,7 @@ function Swiftcomplete() {
   const panelOpen = useSignal(false);
 
   const abortRef = useRef<AbortController | null>(null);
+  const lastLookupParamsRef = useRef<ExecutedLookupParams | null>(null);
 
   const showBanner = (tone: BannerTone, message: string) => { statusBanner.value = { tone, message }; };
   const clearBanner = () => statusBanner.value = null;
@@ -102,18 +128,24 @@ function Swiftcomplete() {
       panelOpen.value = false;
       isSearching.value = false;
       resetSelectionState();
+      lastLookupParamsRef.current = null;
       return;
     }
 
     isSearching.value = true;
     clearBanner();
 
+    const lookupParams: ExecutedLookupParams = {
+      maxResults: 5,
+      query: trimmedValue,
+    };
+
     const timeoutId = setTimeout(async () => {
       if (disposed) return;
       const controller = new AbortController();
       abortRef.current = controller;
       try {
-        const res = await fetch(buildLookupUrl({ query: trimmedValue }), {
+        const res = await fetch(buildLookupUrl(lookupParams), {
           signal: controller.signal,
         });
         if (!res.ok) throw new Error(`Lookup failed ${res.status}`);
@@ -123,6 +155,7 @@ function Swiftcomplete() {
         }
         suggestions.value = data;
         panelOpen.value = data.length > 0;
+        lastLookupParamsRef.current = lookupParams;
       } catch (err) {
         if (disposed || controller.signal.aborted) {
           return;
@@ -131,6 +164,7 @@ function Swiftcomplete() {
         console.error('Lookup error', err);
         suggestions.value = [];
         panelOpen.value = false;
+        lastLookupParamsRef.current = null;
         showBanner('critical', 'We couldn’t fetch address suggestions. Try again shortly.');
       } finally {
         if (!disposed && abortRef.current === controller) {
@@ -147,108 +181,152 @@ function Swiftcomplete() {
     };
   });
 
-  const handleSelectSuggestion =
-    async (place: Location) => {
-      if (!applyShippingAddressChange) {
-        showBanner('critical', 'Address updates are not available right now.');
-        return;
-      }
+  const handleSelectSuggestion = async (place: Location, index: number) => {
+    if (!applyShippingAddressChange) {
+      showBanner('critical', 'Address updates are not available right now.');
+      return;
+    }
 
-      const selectionKey = getLocationKey(place);
-      selectionState.value = { status: 'pending', key: selectionKey };
+    const selectionKey = getLocationKey(place);
+    selectionState.value = { status: 'pending', key: selectionKey };
 
-      if (place.isContainer && place.container) {
-        isSearching.value = true;
+    if (place.container) {
+      isSearching.value = true;
 
-        try {
-          const res = await fetch(
-            buildLookupUrl({ maxResults: 100, container: place.container }),
-          );
-
-          if (!res.ok) {
-            throw new Error(`Container lookup failed ${res.status}`);
-          }
-
-          const data = (await res.json()) as Location[];
-
-          if (data.length === 0) {
-            showBanner(
-              'critical',
-              'We couldn’t find addresses for that location. Try another suggestion.',
-            );
-          } else {
-            suggestions.value = data;
-            panelOpen.value = true;
-          }
-        } catch (error) {
-          console.error('Container expansion failed', error);
-          showBanner(
-            'critical',
-            'We couldn’t expand that result. Please try a different option.',
-          );
-        } finally {
-          isSearching.value = false;
-          resetSelectionState();
-        }
-
-        return;
-      }
-
-      const primaryText = place.primary?.text;
-      let address1 = primaryText?.trim();
-      if (!address1) {
-        address1 = primaryText;
-      }
-      let address2: string | undefined;
-      let company: string | undefined;
-
-      if (isSubbuildingLocation(place.type)) {
-        const [beforeComma, remainder] = splitPrimaryTextSegments(primaryText);
-        address2 = beforeComma ?? address2;
-        if (remainder) {
-          address1 = remainder;
-        }
-      } else if (isBusinessLocation(place.type)) {
-        const [beforeComma, remainder] = splitPrimaryTextSegments(primaryText);
-        company = beforeComma ?? company;
-        if (remainder) {
-          address1 = remainder;
-        }
-      }
-
-      const [city = '', zip = ''] = (place.secondary?.text ?? '')
-        .split(',')
-        .map((part) => part.trim())
-        .filter(Boolean);
+      const containerLookup: ExecutedLookupParams = {
+        maxResults: 100,
+        container: place.container,
+      };
 
       try {
-        await applyShippingAddressChange({
-          type: 'updateShippingAddress',
-          address: {
-            address1,
-            address2,
-            company,
-            city,
-            zip,
-            countryCode: place.countryCode,
-          },
-        });
+        const res = await fetch(
+          buildLookupUrl(containerLookup),
+        );
 
-        showBanner('success', 'Address applied to the checkout.');
-      } catch (error: unknown) {
-        console.error('Error applying suggestion to checkout:', error);
+        if (!res.ok) {
+          throw new Error(`Container lookup failed ${res.status}`);
+        }
+
+        const data = (await res.json()) as Location[];
+
+        if (data.length === 0) {
+          showBanner(
+            'critical',
+            'We couldn’t find addresses for that location. Try another suggestion.',
+          );
+        } else {
+          suggestions.value = data;
+          panelOpen.value = true;
+          lastLookupParamsRef.current = containerLookup;
+        }
+      } catch (error) {
+        console.error('Container expansion failed', error);
         showBanner(
           'critical',
-          'Something went wrong while applying the address. Please try again.',
+          'We couldn’t expand that result. Please try a different option.',
         );
       } finally {
-        selectionState.value = { status: 'settled', key: selectionKey };
+        isSearching.value = false;
+        resetSelectionState();
       }
+
+      return;
+    }
+
+    const baseLookup =
+      lastLookupParamsRef.current ??
+      (() => {
+        const trimmed = inputValue.value.trim();
+        if (place.container) {
+          return {
+            maxResults: 100,
+            container: place.container,
+          } satisfies ExecutedLookupParams;
+        }
+        if (trimmed.length >= MIN_QUERY_LENGTH) {
+          return {
+            maxResults: 5,
+            query: trimmed,
+          } satisfies ExecutedLookupParams;
+        }
+        return null;
+      })();
+
+    if (!baseLookup) {
+      console.error('Populate lookup skipped: missing lookup context');
+      showBanner(
+        'critical',
+        'We couldn’t fetch that address. Try another suggestion.',
+      );
+      resetSelectionState();
+      return;
+    }
+
+    const lookupWithPopulate: LookupParams = {
+      ...baseLookup,
+      populateIndex: index,
     };
+
+    let populatedLocation: Location | null = null;
+
+    try {
+      const res = await fetch(buildLookupUrl(lookupWithPopulate));
+      if (!res.ok) {
+        throw new Error(`Populate lookup failed ${res.status}`);
+      }
+      const data = (await res.json()) as Location[];
+      const locationFromResponse = data[index];
+      if (!locationFromResponse) {
+        throw new Error(`Populate lookup missing index ${index}`);
+      }
+      suggestions.value = data;
+      panelOpen.value = data.length > 0;
+      lastLookupParamsRef.current = {
+        maxResults: baseLookup.maxResults,
+        query: baseLookup.query,
+        container: baseLookup.container,
+      };
+      populatedLocation = locationFromResponse;
+    } catch (error) {
+      console.error('Populate lookup failed', error);
+      showBanner(
+        'critical',
+        'We couldn’t fetch that address. Try another suggestion.',
+      );
+      resetSelectionState();
+      return;
+    }
+
+    try {
+      const addressFields = buildAddressFields(populatedLocation);
+
+      await applyShippingAddressChange({
+        type: 'updateShippingAddress',
+        address: {
+          address1: addressFields.address1,
+          address2: addressFields.address2,
+          company: addressFields.company,
+          city: addressFields.city,
+          zip: addressFields.zip,
+          countryCode: populatedLocation.countryCode,
+        },
+      });
+
+      showBanner('success', 'Address applied to the checkout.');
+    } catch (error: unknown) {
+      console.error('Error applying suggestion to checkout:', error);
+      showBanner(
+        'critical',
+        'Something went wrong while applying the address. Please try again.',
+      );
+    } finally {
+      selectionState.value = { status: 'settled', key: selectionKey };
+    }
+  };
 
   const handleInput = (event: Event) => {
     const { value } = event.currentTarget as HTMLInputElement;
-    inputValue.value = value;
+    inputValue.value = value ?? '';
     resetSelectionState();
     clearBanner();
   };
@@ -261,6 +339,7 @@ function Swiftcomplete() {
     panelOpen.value = false;
     resetSelectionState();
     clearBanner();
+    lastLookupParamsRef.current = null;
   };
 
   const activeSuggestionKey =

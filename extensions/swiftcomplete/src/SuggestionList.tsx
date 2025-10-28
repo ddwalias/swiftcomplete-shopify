@@ -11,7 +11,7 @@ export default function SuggestionList({
   suggestions: Location[];
   activeSuggestionKey: string | null;
   selectedSuggestionKey: string | null;
-  onSelect: (suggestion: Location) => Promise<void> | void;
+  onSelect: (suggestion: Location, index: number) => Promise<void> | void;
 }) {
   if (suggestions.length === 0) {
     return null;
@@ -29,7 +29,7 @@ export default function SuggestionList({
           <s-stack key={suggestionId} direction="block" gap='none'>
             <s-clickable
               onClick={() => {
-                void onSelect(suggestion);
+                void onSelect(suggestion, index);
               }}
               accessibilityLabel={`Use address ${suggestion.primary.text}`}
             >
